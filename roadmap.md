@@ -1,6 +1,6 @@
 # ROADMAP KUCIBOK — Audit Complet & Plan de Remédiation
 
-**Version:** 1.1 | **Date:** 19 février 2026 | **Statut:** Phase 0 complète ✅ — Phase 1 en cours
+**Version:** 1.2 | **Date:** 19 février 2026 | **Statut:** Phase 0 ✅ Phase 1 ✅ — Phase 2 à venir
 
 > Ce document est le résultat d'un audit senior couvrant : Sécurité, Scalabilité, Performance, UX/UI, Logique Métier, Architecture, et Tests Unitaires.
 
@@ -139,7 +139,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ## PHASE 1 — CORRECTIONS CRITIQUES DE SÉCURITÉ (Semaine 1-2)
 
 ### [P1-SEC-007] 🟠 Installer et configurer Helmet.js
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-helmet` (commit `2c5c67a`)
 - **Fichiers :** `backend/index.js`, `backend/package.json`
 - **Problème :** Aucun header HTTP de sécurité (X-Frame-Options, HSTS, CSP, X-XSS-Protection).
 - **Actions :**
@@ -150,7 +150,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-008] 🟠 Bloquer l'escalade de privilège dans updateUser
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-auth-hardening` (commit `5c6a2e9`)
 - **Fichiers :** `backend/controllers/auth.controllers.js:390`, `backend/routes/auth.routes.js:57`
 - **Problème :** N'importe quel utilisateur authentifié peut envoyer `PUT /api/auth/:id` avec `{ "role": "admin" }`.
 - **Actions :**
@@ -160,7 +160,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-009] 🟠 Protéger les endpoints getUserById et getUserByEmail
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-auth-hardening` (commit `5c6a2e9`)
 - **Fichiers :** `backend/routes/auth.routes.js:40, 46`
 - **Problème :** `GET /:id` et `GET /email/:email` sans authentification exposent les données utilisateurs.
 - **Actions :**
@@ -170,7 +170,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-010] 🟠 Supprimer les logs verbeux en production
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-logger` (commit `a176aca`) — Winston installé, logger structuré, rotation fichiers
 - **Fichiers :** `backend/controllers/auth.controllers.js:170-171`, `backend/controllers/payment.controller.js:145`, `frontend/src/api/useAuth.js:8-9,17,24`
 - **Actions :**
   1. Installer `winston` ou `pino` comme logger structuré
@@ -180,7 +180,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-011] 🟠 Sécuriser l'endpoint `/api/report-error`
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-report-error` (commit `d795ee6`) — rate limit 5/15 min, validation input, troncature
 - **Fichiers :** `backend/index.js:205-221`
 - **Problème :** Endpoint POST public non authentifié → spam email admin, déni de service.
 - **Actions :**
@@ -191,7 +191,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-012] 🟠 Corriger la validation MIME des uploads
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-multer-mime` (commit `e9aa321`) — magic bytes JPEG/PNG/GIF/WebP, UUID filename, memoryStorage
 - **Fichiers :** `backend/middleware/multer.js`
 - **Problème :** Vérification basée sur `file.mimetype` (fourni par le client, spoofable). Un `.php` ou `.js` peut être uploadé avec `mimetype: "image/jpeg"`.
 - **Actions :**
@@ -203,7 +203,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-013] 🟠 Activer la vérification email
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-auth-hardening` (commit `5c6a2e9`)
 - **Fichiers :** `backend/controllers/auth.controllers.js:275-280`
 - **Problème :** La vérification email est commentée. Tout utilisateur peut se connecter sans vérifier son adresse.
 - **Action :** Décommenter le bloc de vérification. Tester le flux complet avant activation.
@@ -211,7 +211,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-014] 🟠 Sécuriser `deleteAllUsers`
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-auth-hardening` (commit `5c6a2e9`) — confirmation obligatoire + transaction MongoDB
 - **Fichiers :** `backend/controllers/auth.controllers.js:526-538`
 - **Problème :** Supprime tout sans transaction MongoDB. Une interruption laisse la DB dans un état incohérent.
 - **Actions :**
@@ -223,7 +223,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-015] 🟠 Implémenter l'idempotence sur les callbacks PayDunya
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-payment-idempotence` (commit `51eceab`) — idempotence + correction bug this + durée plan dynamique
 - **Fichiers :** `backend/controllers/payment.controller.js:142-172`
 - **Problème :** Pas de vérification de signature webhook, pas d'idempotence → double traitement possible.
 - **Actions :**
@@ -235,7 +235,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P1-SEC-016] 🟠 Conformité RGPD — Consentement pour le tracking IP
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-1-rgpd` (commit `3f85738`) — bannière consentement, localStorage, addVisitor conditionnel
 - **Fichiers :** `frontend/src/App.jsx:64-89`
 - **Problème :** Collecte IP + user agent sans consentement via `api.ipify.org` à chaque visite.
 - **Actions :**
