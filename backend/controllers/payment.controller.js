@@ -142,7 +142,6 @@ exports.initSubscriptionPayment = async (req, res, next) => {
 exports.handlePayDunyaCallback = async (req, res, next) => {
   try {
     const callbackData = req.body;
-    console.log('Callback PayDunya reçu:', callbackData);
 
     // Traiter le callback
     const result = await payDunyaService.processCallback(callbackData);
@@ -157,10 +156,11 @@ exports.handlePayDunyaCallback = async (req, res, next) => {
     // Déterminer le type de transaction
     const transactionType = customData?.find(item => item.type)?.type;
 
+    // P1-SEC-015 — Correction : this.X est undefined ici, utiliser exports.X
     if (transactionType === 'artwork_purchase') {
-      await this.processArtworkPurchase(customData, status, transactionId);
+      await exports.processArtworkPurchase(customData, status, transactionId);
     } else if (transactionType === 'subscription_payment') {
-      await this.processSubscriptionPayment(customData, status, transactionId);
+      await exports.processSubscriptionPayment(customData, status, transactionId);
     }
 
     res.status(200).json({ message: 'Callback traité avec succès' });
@@ -176,7 +176,7 @@ exports.handlePayDunyaCallback = async (req, res, next) => {
  */
 exports.processArtworkPurchase = async (customData, status, transactionId) => {
   const transactionIdFromData = customData?.find(item => item.transactionId)?.transactionId;
-  
+
   if (!transactionIdFromData) {
     throw new Error('ID de transaction manquant dans les données custom');
   }
@@ -188,6 +188,12 @@ exports.processArtworkPurchase = async (customData, status, transactionId) => {
 
   if (!transaction) {
     throw new Error('Transaction non trouvée');
+  }
+
+  // P1-SEC-015 — Idempotence : ignorer les callbacks en double sur une transaction terminée
+  if (transaction.paymentStatus === 'completed' || transaction.paymentStatus === 'failed') {
+    console.info(`[PayDunya] callback ignoré — transaction ${transactionIdFromData} déjà en état "${transaction.paymentStatus}"`);
+    return;
   }
 
   if (status === 'completed') {
@@ -232,9 +238,9 @@ exports.processArtworkPurchase = async (customData, status, transactionId) => {
  */
 exports.processSubscriptionPayment = async (customData, status, transactionId) => {
   const subscriptionIdFromData = customData?.find(item => item.subscriptionId)?.subscriptionId;
-  
+
   if (!subscriptionIdFromData) {
-    throw new Error('ID d\'abonnement manquant dans les données custom');
+    throw new Error("ID d'abonnement manquant dans les données custom");
   }
 
   const subscription = await Subscription.findById(subscriptionIdFromData)
@@ -245,11 +251,19 @@ exports.processSubscriptionPayment = async (customData, status, transactionId) =
     throw new Error('Abonnement non trouvé');
   }
 
+  // P1-SEC-015 — Idempotence : ignorer les callbacks en double sur un abonnement terminé
+  if (subscription.status === 'active' || subscription.status === 'failed') {
+    console.info(`[PayDunya] callback ignoré — abonnement ${subscriptionIdFromData} déjà en état "${subscription.status}"`);
+    return;
+  }
+
   if (status === 'completed') {
-    // Paiement réussi
+    // P1-SEC-015 — Durée lue depuis le plan (fin du hardcodage 30 jours)
+    const durationDays = subscription.planId?.durationDays ?? 30;
+
     subscription.status = 'active';
     subscription.startDate = new Date();
-    subscription.endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 jours
+    subscription.endDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
     subscription.paymentTransactionId = transactionId;
     await subscription.save();
 

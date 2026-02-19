@@ -1,6 +1,6 @@
 # ROADMAP KUCIBOK — Audit Complet & Plan de Remédiation
 
-**Version:** 1.0 | **Date:** 19 février 2026 | **Statut:** En cours
+**Version:** 1.1 | **Date:** 19 février 2026 | **Statut:** Phase 0 complète ✅ — Phase 1 en cours
 
 > Ce document est le résultat d'un audit senior couvrant : Sécurité, Scalabilité, Performance, UX/UI, Logique Métier, Architecture, et Tests Unitaires.
 
@@ -47,7 +47,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 > À traiter IMMÉDIATEMENT, avant tout autre changement. Chaque heure de délai représente un risque de compromission totale.
 
 ### [P0-SEC-001] 🔴 Rotation immédiate de TOUS les secrets compromis
-- [ ] **Statut :** À faire
+- [~] **Statut :** Partiel — `.gitignore` et `.env.exemple` nettoyés ✅ — Rotation dans les services externes à faire manuellement
 - **Fichiers :** `backend/.env`, `backend/.env.production`, `frontend/.env`
 - **Problème :** Les fichiers `.env` sont commités dans Git. L'historique conserve ces données même après suppression.
 - **Actions :**
@@ -63,7 +63,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P0-SEC-002] 🔴 Supprimer les endpoints de bypass en production
-- [ ] **Statut :** À faire
+- [x] **Statut :** Fait — commit `180778c` — branche `fix/phase-0-bypass-cors-logidoo`
 - **Fichiers :** `backend/index.js:122-203`, `frontend/src/api/useAuth.js:11`
 - **Problème :** `/api/auth/login-bypass` accepte `admin@kucibok.com / admin123` (hardcodé). Le frontend appelle cette backdoor au lieu du vrai endpoint `/api/auth/login`.
 - **Actions :**
@@ -76,7 +76,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P0-SEC-003] 🔴 Supprimer le JWT Logidoo hardcodé dans le source
-- [ ] **Statut :** À faire
+- [x] **Statut :** Fait — commit `180778c` — auth.js refactorisé en `requireRole()` factory
 - **Fichiers :** `backend/middleware/auth.js:8`
 - **Problème :** Un JWT RSA256 complet est hardcodé. Quiconque possède ce token (visible dans le code) accède à tous les endpoints `auth` et `admin` sans vérification DB.
 - **Actions :**
@@ -87,7 +87,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P0-SEC-004] 🔴 Chiffrer les clés privées Ethereum en base de données
-- [ ] **Statut :** À faire
+- [x] **Statut :** Fait — commit `b146496` — utils/encryption.js AES-256-GCM + hook Wallet pre('save') + script migration
 - **Fichiers :** `backend/models/Wallet.js:16-20`, `backend/controllers/auth.controllers.js:64-88`
 - **Problème :** La `privateKey` ETH est stockée en clair dans MongoDB. Tout accès DB compromet tous les wallets.
 - **Actions :**
@@ -99,7 +99,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P0-SEC-005] 🔴 Supprimer les données bancaires du modèle User
-- [ ] **Statut :** À faire
+- [x] **Statut :** Fait — commit `53342fa` — schéma User nettoyé + script migration MongoDB
 - **Fichiers :** `backend/models/User.js:38-51`
 - **Problème :** Champs `card.cardNumber`, `card.cvc`, `card.expiry` stockés en clair → violation PCI-DSS.
 - **Actions :**
@@ -110,7 +110,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P0-SEC-006] 🔴 Corriger la configuration CORS (double enregistrement)
-- [ ] **Statut :** À faire
+- [x] **Statut :** Fait — commit `180778c` — suppression cors() ouvert + bodyParser + express.json() doublons
 - **Fichiers :** `backend/index.js:68-82`
 - **Problème :** `cors()` appelé 2 fois (ouvert à tout, puis restreint). `express.json()` appelé 2 fois. `bodyParser.json()` redondant.
 - **Actions :**
@@ -121,7 +121,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P0-UX-001] 🔴 Supprimer le `window.close()` déclenché par le redimensionnement
-- [ ] **Statut :** À faire
+- [x] **Statut :** Fait — commit `067257f` — handleResize et window.close() supprimés d'App.jsx
 - **Fichiers :** `frontend/src/App.jsx:53-61`
 - **Problème :** Ferme l'onglet utilisateur si `outerWidth - innerWidth > 100` (DevTools ouverts, panneau latéral, certains moniteurs).
 - **Action :** Supprimer entièrement le handler `handleResize` et son `addEventListener`.
@@ -129,7 +129,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P0-UX-002] 🔴 Supprimer le log du mot de passe en clair dans la console
-- [ ] **Statut :** À faire
+- [x] **Statut :** Fait — commit `180778c` — console.log(email, password) supprimés de useAuth.js
 - **Fichiers :** `frontend/src/api/useAuth.js:8-9`
 - **Problème :** `console.log("Attempting login with:", email, password)` — mot de passe visible dans la console navigateur.
 - **Action :** Supprimer les lignes 8-9 et 17 de `useAuth.js`.

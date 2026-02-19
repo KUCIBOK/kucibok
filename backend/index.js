@@ -1,7 +1,7 @@
 const http = require('http');
 const express = require("express");
 const cors = require("cors");
-
+const helmet = require("helmet");
 const compression = require("compression");
 const path = require("path");
 const connectDatabase = require("./config/database");
@@ -10,6 +10,7 @@ const rateLimit = require("express-rate-limit");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const protect = require('./middleware/api');
 const transporter = require("./config/mailerConfig");
+const logger = require("./utils/logger"); // P1-SEC-010
 
 
 // Cron jobs lancés
@@ -65,6 +66,18 @@ class App {
     }
 
     initializeMiddlewares(){
+        // Headers de sécurité HTTP (P1-SEC-007)
+        this.app.use(helmet({
+            crossOriginResourcePolicy: { policy: "cross-origin" }, // nécessaire pour /uploads/ publics
+            contentSecurityPolicy: {
+                directives: {
+                    defaultSrc: ["'self'"],
+                    imgSrc: ["'self'", "data:", "https:"],
+                    scriptSrc: ["'self'"],
+                    styleSrc: ["'self'", "'unsafe-inline'"],
+                },
+            },
+        }));
         this.app.use(express.json({ limit: "10mb" }));
         this.app.use(express.urlencoded({ extended: true }));
         this.app.use(compression());
@@ -89,11 +102,8 @@ class App {
         this.app.use("/api/", limiter); //Mise en place du limiteur pour l'api
         this.app.use((req, res, next) => {
             const { method, url } = req;
-            const timestamp = new Date().toISOString();
-            const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-            console.info(
-                `\x1b[36m[${timestamp}]\x1b[0m \x1b[32m${method}\x1b[0m \x1b[33m${url}\x1b[0m \x1b[35mIP:\x1b[0m ${ip}`
-            );
+            const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+            logger.http(`${method} ${url}`, { ip });
             next()
         })
         this.app.use("/api/health", (req, res, next) => {
@@ -110,7 +120,7 @@ class App {
                 uptime: process.uptime(),
             });
         });
-        console.info("🗂  Middlewares initialisés");
+        logger.info("Middlewares initialisés");
     }
 
     initializeRoutes(){
@@ -123,21 +133,38 @@ class App {
         protect(req, res, next);
       });
 
-      this.app.post("/api/report-error", async (req, res, next) => {
-        console.log("Received frontend error:", req.body);
+      // P1-SEC-011 — Rate limiter strict pour éviter le spam email admin
+      const reportErrorLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000, // 15 minutes
+        max: 5,
+        message: { error: "Trop de signalements. Réessayez dans 15 minutes." },
+        standardHeaders: true,
+        legacyHeaders: false,
+      });
+
+      this.app.post("/api/report-error", reportErrorLimiter, async (req, res, next) => {
         try {
             const { error, errorInfo } = req.body;
+
+            // P1-SEC-011 — Validation et assainissement des inputs
+            if (!error || typeof error !== "string") {
+              return res.status(400).json({ error: "Champ 'error' manquant ou invalide." });
+            }
+            const safeError = String(error).slice(0, 1000);
+            const safeInfo = errorInfo
+              ? JSON.stringify(errorInfo).slice(0, 4000)
+              : "(aucune info)";
+
             await transporter.sendMail({
-                from: `"Kucibok Frontend"`,
+                from: `"Kucibok Frontend" <${config.adminEmail}>`,
                 to: config.adminEmail,
                 subject: "[ALERTE FRONTEND] Erreur JS côté client",
-                text: `Erreur: ${error}\n\nInfo: ${JSON.stringify(errorInfo, null, 2)}`,
+                text: `Erreur: ${safeError}\n\nInfo: ${safeInfo}`,
             });
-            console.log("Alert mail sent successfully");
             res.status(200).json({ ok: true });
         } catch (err) {
             console.error("Erreur lors de l'envoi du mail d'alerte frontend:", err);
-            res.status(500).json({ error: err.message });
+            res.status(500).json({ error: "Erreur serveur." });
         }
       });
       this.app.use("/api/artworks", artworksRoutes);
@@ -176,13 +203,13 @@ class App {
       this.app.use("/uploads", express.static(path.join(__dirname, "public/uploads/")));
       this.app.use("/images", express.static(path.join(__dirname, "public/images/")));
       this.app.use("/certificates", express.static(path.join(__dirname, "public/certificates/")));
-      console.info("🛣  Routes initialisés");
+      logger.info("Routes initialisées");
     }
 
     initializeErrorsHandlers() {
         this.app.use(errorHandler);
         this.app.use(notFoundHandler);
-        console.info("⭕ Gestion d'erreurs initialisés");
+        logger.info("Gestion d'erreurs initialisée");
     }
 
     async start() {
@@ -192,24 +219,17 @@ class App {
 
       // Lancement du serveur
       this.server.listen(config.port, config.host, () => {
-        console.info(
-          `🚀 Serveur lancé sur http://${config.host}:${config.port}`
-        );
-        console.info(`📝 Environment: ${config.nodeEnv}`);
-        console.info(`🖥️  Interface utilisateur disponible sur ${config.cors.origin}`);
-        console.info(
-          `📦 Base de données: ${config.database.uri.replace(
-            /\/\/.*@/,
-            "//***:***@"
-          )}`
-        );
+        logger.info(`Serveur lancé sur http://${config.host}:${config.port}`);
+        logger.info(`Environment: ${config.nodeEnv}`);
+        logger.info(`Interface utilisateur: ${config.cors.origin}`);
+        logger.info(`Base de données: ${config.database.uri.replace(/\/\/.*@/, "//***:***@")}`);
       });
 
       // Arrêt gracieux du serveur
       process.on("SIGINT", this.shutdown.bind(this));
       process.on("SIGTERM", this.shutdown.bind(this));
     } catch (error) {
-      console.error("Failed to start server:", error);
+      logger.error("Échec du démarrage du serveur", { error: error.message, stack: error.stack });
       process.exit(1);
     }
   }
@@ -218,18 +238,16 @@ class App {
    * Arrêt gracieux du serveur
    */
   async shutdown() {
-    console.info("🛑 Arrêt du serveur...");
+    logger.info("Arrêt du serveur en cours...");
 
     this.server.close(() => {
-      console.info("✅ Serveur arrêté");
+      logger.info("Serveur arrêté proprement");
       process.exit(0);
     });
 
     // Forcer à s'arrêter après 10 secondes
     setTimeout(() => {
-      console.error(
-        "❌ Le serveur ne s'est pas arrêté. L'arrêt forcé a été déclenché."
-      );
+      logger.error("Le serveur ne s'est pas arrêté dans les délais. Arrêt forcé.");
       process.exit(1);
     }, 10000);
   }
@@ -237,6 +255,6 @@ class App {
 
 const app = new App();
 app.start().catch((error) => {
-  console.error("Failed to start application:", error);
+  logger.error("Échec du démarrage de l'application", { error: error.message });
   process.exit(1);
 });

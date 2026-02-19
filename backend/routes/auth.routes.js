@@ -37,13 +37,13 @@ router.post("/forgot-password", forgotPassword);
 
 router.post("/reset-password", resetPassword);
 
-router.get("/:id", getUserById);
+router.get("/:id", auth, getUserById);
 
 router.get("/verify-email/:token", verifyEmail);
 
 router.get("/resend-verification-email/:email", resendVerificationEmail);
 
-router.get("/email/:email", getUserByEmail);
+router.get("/email/:email", auth, getUserByEmail);
 
 //admin
 router.post("/", admin, createUser);

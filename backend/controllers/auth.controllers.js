@@ -272,12 +272,12 @@ exports.login = async (req, res, next) => {
       return next(createError.notFound("Email ou mot de passe incorrect"));
     }
 
-    // if (!user.isEmailVerified && user.role != "admin") {
-    //   return res.status(403).json({
-    //     message:
-    //       "Veuillez vérifier votre adresse email avant de vous connecter.",
-    //   });
-    // }
+    // P1-SEC-013 — Vérification email obligatoire avant connexion
+    if (!user.isEmailVerified && user.role !== "admin") {
+      return next(createError.forbidden(
+        "Veuillez vérifier votre adresse email avant de vous connecter."
+      ));
+    }
 
     if (!user?.isActive) {
       return next(createError.unauthorized("Compte suspendu"));
@@ -380,6 +380,10 @@ exports.updateUser = async (req, res, next) => {
       return next(createError.notFound("Utilisateur non trouvé"));
     }
     let oldMail = user.email;
+    // Seul un admin peut modifier le rôle (P1-SEC-008 — anti escalade de privilège)
+    if (role && req.user?.role !== 'admin') {
+      return next(createError.forbidden("Modification du rôle réservée aux administrateurs."));
+    }
     // Met à jour les informations de l'utilisateur
     if (email) user.email = email;
     if (password) user.password = await bcrypt.hash(password, 10);
@@ -387,7 +391,7 @@ exports.updateUser = async (req, res, next) => {
     if (username) user.username = username;
     if (telephone) user.telephone = telephone;
     if (country) user.country = country;
-    if (role) user.role = role;
+    if (role && req.user?.role === 'admin') user.role = role;
     await user.save();
 
     if (oldMail != user.email) {
@@ -524,22 +528,36 @@ exports.setUserStatus = async (req, res, next) => {
 };
 
 exports.deleteAllUsers = async (req, res, next) => {
+  // P1-SEC-014 — Confirmation explicite obligatoire + transaction atomique
+  const { confirm } = req.body;
+  if (confirm !== "DELETE_ALL_USERS") {
+    return next(createError.badRequest(
+      'Confirmation requise : envoyez { "confirm": "DELETE_ALL_USERS" } dans le corps de la requête.'
+    ));
+  }
+
+  const mongoose = require("mongoose");
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    // Supprime tous les utilisateurs
-    await User.deleteMany({});
-    await Artist.deleteMany({});
-    await Profile.deleteMany({});
-    await WalletModel.deleteMany({});
-    await Transaction.deleteMany({});
-    await Review.deleteMany({});
-    await BlogPost.deleteMany({});
-    await Collection.deleteMany({});
+    await User.deleteMany({}, { session });
+    await Artist.deleteMany({}, { session });
+    await Profile.deleteMany({}, { session });
+    await WalletModel.deleteMany({}, { session });
+    await Transaction.deleteMany({}, { session });
+    await Review.deleteMany({}, { session });
+    await BlogPost.deleteMany({}, { session });
+    await Collection.deleteMany({}, { session });
+    await session.commitTransaction();
     return res
       .status(200)
-      .json({ message: "Tous les utilisateurs ont été supprimés avec succès" });
+      .json({ message: "Tous les utilisateurs ont été supprimés avec succès." });
   } catch (err) {
+    await session.abortTransaction();
     console.error("Erreur Delete All Users:", err.message);
     return next(createError.internal("Erreur serveur lors de la suppression de tous les utilisateurs."));
+  } finally {
+    session.endSession();
   }
 };
 
