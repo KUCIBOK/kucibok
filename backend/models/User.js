@@ -35,20 +35,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    card: {
-      cardNumber: {
-        type: String,
-      },
-      cardName: {
-        type: String,
-      },
-      cvc: {
-        type: Number,
-      },
-      expiry: {
-        type: String,
-      },
-    },
     profileCompleted: {
       type: Boolean,
       default: false,

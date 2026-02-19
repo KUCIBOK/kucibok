@@ -1,7 +1,7 @@
 const http = require('http');
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
+
 const compression = require("compression");
 const path = require("path");
 const connectDatabase = require("./config/database");
@@ -10,7 +10,7 @@ const rateLimit = require("express-rate-limit");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const protect = require('./middleware/api');
 const transporter = require("./config/mailerConfig");
-const { sendVerificationEmail } = require("./services/resendMailer.service");
+
 
 // Cron jobs lancés
 require("./jobs/auctionCronJob");
@@ -65,19 +65,15 @@ class App {
     }
 
     initializeMiddlewares(){
-        this.app.use(bodyParser.json());
-        this.app.use(express.json());
         this.app.use(express.json({ limit: "10mb" }));
         this.app.use(express.urlencoded({ extended: true }));
-        this.app.use(cors());
         this.app.use(compression());
-        // Configuration des cors
         this.app.use(
             cors({
                 origin: config.cors.origin,
                 credentials: false,
                 methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-                allowedHeaders: ["Content-Type", "Authorization"],
+                allowedHeaders: ["Content-Type", "Authorization", "kcb-api-key"],
             })
         );
         // Configuration de la limation de requête
@@ -118,88 +114,13 @@ class App {
     }
 
     initializeRoutes(){
-      // Bypass register endpoint (works without database) - for testing email
-      this.app.post("/api/auth/register-bypass", async (req, res) => {
-        try {
-          const jwt = require('jsonwebtoken');
-          const { email, password, name, role } = req.body;
-          
-          if (!email || !password || !name || !role) {
-            return res.status(400).json({ error: "Champs requis manquants" });
-          }
-          
-          // Create a test user without database
-          const userId = "bypass-" + Date.now();
-          
-          // Send verification email
-          const verificationToken = jwt.sign(
-            { userId: userId },
-            process.env.JWT_SECRET,
-            { expiresIn: "15m" }
-          );
-          const verifyLink = `${config.cors.origin}/verify-email/${verificationToken}`;
-          
-          await sendVerificationEmail(email, name, verifyLink);
-          
-          return res.status(201).json({
-            message: "Inscription réussie. Vérifiez votre email pour continuer.",
-            email: email,
-            name: name
-          });
-        } catch (error) {
-          console.error("Erreur register-bypass:", error);
-          return res.status(500).json({ error: error.message });
-        }
-      });
-
-      // Disable API key protection for bypass endpoints
+      // Middleware API key — appliqué à toutes les routes /api/
+      // Les routes logistiques Logidoo sont authentifiées via leur propre middleware
       this.app.use((req, res, next) => {
-        // Skip API key check for bypass routes
-        if (req.path.includes('/register-bypass') || 
-            req.path.includes('/login-bypass') || 
-            req.path.includes('/logistics')) {
+        if (req.path.startsWith('/api/logistics')) {
           return next();
         }
-        // Apply protection for other routes
         protect(req, res, next);
-      });
-
-      // Bypass login endpoint (works without database)
-      this.app.post("/api/auth/login-bypass", async (req, res) => {
-        const jwt = require('jsonwebtoken');
-        const { email, password } = req.body;
-        
-        // Accept these test accounts
-        if (email === "admin@kucibok.com" && password === "admin123") {
-          const token = jwt.sign(
-            { 
-              _id: "bypass-admin-id", 
-              name: "Admin User", 
-              email: "admin@kucibok.com", 
-              role: "admin",
-              isActive: true,
-              isEmailVerified: true
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: "7d" }
-          );
-          return res.status(200).json({
-            message: "Connexion réussie",
-            token: token,
-            artist: null,
-            profile: null,
-            user: {
-              _id: "bypass-admin-id",
-              name: "Admin User",
-              email: "admin@kucibok.com",
-              role: "admin",
-              isActive: true,
-              isEmailVerified: true,
-              likedArtworks: []
-            }
-          });
-        }
-        return res.status(401).json({ error: "Identifiants invalides" });
       });
 
       this.app.post("/api/report-error", async (req, res, next) => {

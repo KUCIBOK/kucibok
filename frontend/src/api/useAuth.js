@@ -5,23 +5,18 @@ const { api, options } = utils;
 
 //Login ✅
 export async function loginUser(email, password) {
-  console.log("Attempting login with:", email, password);
-  console.log("API URL:", `${api}/auth/login-bypass`);
   try {
-    const response = await fetch(`${api}/auth/login-bypass`, {
+    const response = await fetch(`${api}/auth/login`, {
       ...options,
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-
-    console.log("Response status:", response.status);
 
     if (response.status === 409) {
       return { error: "L'utilisateur existe déjà. Essayez de vous connecter." };
     }
 
     const data = await response.json();
-    console.log("Response data:", data);
 
     if (data?.token && data?.user) {
       // ⚡ utilise user renvoyé par le backend (avec likedArtworks inclus)

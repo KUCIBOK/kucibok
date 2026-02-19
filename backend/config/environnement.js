@@ -67,6 +67,10 @@ exports.config = {
 
   adminEmail: getEnvVar('ADMIN_EMAIL', 'admin@example.com'),
 
+  wallet: {
+    encryptionKey: getEnvVar('WALLET_ENCRYPTION_KEY', ''),
+  },
+
   log: {
     level: getEnvVar('LOG_LEVEL', 'info'),
   },

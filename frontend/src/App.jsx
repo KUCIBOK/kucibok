@@ -49,17 +49,6 @@ function App() {
     // document.addEventListener('selectstart', handleSelect);
     window.addEventListener("beforeprint", handlePrint);
 
-    // Prevent opening devtools via resize (some browsers)
-    const handleResize = () => {
-      if (
-        window.outerWidth - window.innerWidth > 100 ||
-        window.outerHeight - window.innerHeight > 100
-      ) {
-        window.close();
-      }
-    };
-    window.addEventListener("resize", handleResize);
-
     // Visitor tracking
     const addVisitor = async () => {
       let ipAddress = "";

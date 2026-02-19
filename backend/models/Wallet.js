@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt, isEncrypted } = require('../utils/encryption');
 
 const walletSchema = mongoose.Schema({
     userId: {
@@ -6,36 +7,53 @@ const walletSchema = mongoose.Schema({
         ref: 'User',
         required: true,
         unique: true,
-        index: true // Index for frequent lookups
+        index: true,
     },
     address: {
         type: String,
         required: true,
-        unique: true
+        unique: true,
     },
+    // Stockée chiffrée en AES-256-GCM — ne jamais exposer via API
     privateKey: {
         type: String,
-        // required: true,
-        unique: true
+        select: false,   // exclue par défaut de toutes les requêtes
     },
     balance: {
         type: Number,
-        default: 0
+        default: 0,
     },
     currency: {
         type: String,
-        default: 'ETH' // Default currency can be changed as needed
+        default: 'ETH',
     },
     transactions: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Transaction' // Assuming you have a Transaction model for transaction history
+        ref: 'Transaction',
     }],
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
 }, {
     timestamps: true,
-})
+});
+
+// Chiffrer la privateKey avant chaque sauvegarde
+walletSchema.pre('save', function (next) {
+    if (this.isModified('privateKey') && this.privateKey && !isEncrypted(this.privateKey)) {
+        try {
+            this.privateKey = encrypt(this.privateKey);
+        } catch (err) {
+            return next(err);
+        }
+    }
+    next();
+});
+
+/**
+ * Retourne la clé privée déchiffrée.
+ * Usage réservé aux opérations blockchain internes — ne jamais exposer via API.
+ */
+walletSchema.methods.getDecryptedPrivateKey = function () {
+    if (!this.privateKey) return null;
+    return decrypt(this.privateKey);
+};
 
 module.exports = mongoose.model('Wallet', walletSchema);
