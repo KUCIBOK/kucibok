@@ -1,6 +1,6 @@
 # ROADMAP KUCIBOK — Audit Complet & Plan de Remédiation
 
-**Version:** 1.4 | **Date:** 20 février 2026 | **Statut:** Phase 0 ✅ Phase 1 ✅ Phase 2 ✅ Phase 3 ✅ — Phase 4 à venir
+**Version:** 1.5 | **Date:** 20 février 2026 | **Statut:** Phase 0 ✅ Phase 1 ✅ Phase 2 ✅ Phase 3 ✅ Phase 4 ✅ — Phase 5 à venir
 
 > Ce document est le résultat d'un audit senior couvrant : Sécurité, Scalabilité, Performance, UX/UI, Logique Métier, Architecture, et Tests Unitaires.
 
@@ -417,7 +417,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ## PHASE 4 — UX/UI ET LOGIQUE MÉTIER (Semaine 7)
 
 ### [P4-UX-001] 🔵 Supprimer le blocage du clic-droit et F12
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-4-ux-cleanup` (commit `035d171`) — handleContextMenu, handleKeyDown (F12, Ctrl+Shift+I/J/C, Ctrl+U, PrintScreen), handleCut, handleDrag, handlePrint supprimés. `window.scrollTo(0,0)` conservé.
 - **Fichiers :** `frontend/src/App.jsx:13-50`
 - **Problème :** Bloque les utilisateurs légitimes, casse l'accessibilité, hostile à l'UX. N'empêche pas la copie.
 - **Action :** Supprimer les handlers `handleContextMenu` et `handleKeyDown`. Protéger les images avec des watermarks et URLs signées côté serveur.
@@ -425,7 +425,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P4-META-001] 🔵 Implémenter un minimum bid increment
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-4-min-bid-increment` (commit `eaf76ca`) — champ `minBidIncrement` dans Auction, calculé à la création (5% du startingPrice, min 1), validé dans bid.controller avec garde atomique `$lte: amount - increment`
 - **Fichiers :** `backend/controllers/bid.controller.js:32-34`, modèle `Auction`
 - **Problème :** Un centime suffit pour surenchérir → spam et bruit inutile.
 - **Actions :**
@@ -436,7 +436,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P4-META-002] 🔵 Standardiser la gestion des erreurs frontend
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-4-api-errors` (commit `4f66227`) — créé `frontend/src/api/apiHelper.js` : buildOptions() (token dynamique), callApi() (retourne toujours `{ data, error, status }`), apiUrl(). Documentation du bug `const { options } = utils` dans useAPI.js. Migration progressive des API files via re-export depuis useAPI.js.
 - **Fichiers :** `frontend/src/api/*.js`
 - **Problème :** Mix de patterns : `{ error }`, exceptions, `null`.
 - **Actions :**
