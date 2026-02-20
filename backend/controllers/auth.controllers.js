@@ -167,10 +167,6 @@ exports.verifyEmail = async (req, res, next) => {
       return res.status(200).json({ message: "Email déjà vérifié." });
     }
 
-    console.log("vérif token:", token);
-    console.log("payload:", payload);
-    console.log("avant save:", user.isEmailVerified);
-
     user.isEmailVerified = true;
     user.isActive = true;
     await user.save();
@@ -180,7 +176,6 @@ exports.verifyEmail = async (req, res, next) => {
     } catch (error) {
       console.warn("Erreur lors de l'envoi de l'alerte:", error.message);
     }
-    console.log("après save:", user.isEmailVerified);
     let artist = null;
     let profile = null;
     if (user.role === "artist") {
@@ -188,29 +183,24 @@ exports.verifyEmail = async (req, res, next) => {
     } else {
       profile = await Profile.findOne({ userId: user._id });
     }
-    const wallet = await WalletModel.findOne({
-      userId: user?.id,
-    });
+    const wallet = await WalletModel.findOne({ userId: user?.id });
 
     const subscription = await Subscription.findOne({
       userId: user._id,
       status: "active",
     });
     let plan = null;
-    // Si l'utilisateur a un abonnement actif, on récupère le plan associé
     if (subscription?._id) {
       plan = await Plan.findOne({ _id: subscription?.planId });
-      if (plan) {
-        subscription.plan = plan;
-      }
+      if (plan) subscription.plan = plan;
     }
 
     // Supprime le mot de passe de la réponse
     const { password: _, ...userData } = user.toObject();
 
-    // Génère un token JWT
+    // P2-ARCH-008 — Payload JWT minimal
     const newToken = jwt.sign(
-      { ...userData, wallet: wallet, subscription: subscription, plan: plan },
+      { _id: user._id, role: user.role, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -220,9 +210,10 @@ exports.verifyEmail = async (req, res, next) => {
       token: newToken,
       artist: artist,
       profile: profile,
+      // P2-ARCH-008 — Champ user explicite (le frontend n'a plus à décoder le JWT)
+      user: { ...userData, wallet, subscription, plan, likedArtworks: user.likedArtworks || [] },
     });
   } catch (error) {
-    console.error("Erreur vérification email:", error);
     return next(createError.internal("Erreur serveur lors de la vérification email."));
   }
 };
@@ -319,9 +310,9 @@ exports.login = async (req, res, next) => {
     // Supprime le mot de passe de la réponse
     const { password: _, ...userData } = user.toObject();
 
-    // Génère un token JWT
+    // P2-ARCH-008 — Payload JWT minimal (ne plus embarquer wallet/subscription/plan)
     const token = jwt.sign(
-      { ...userData, wallet: wallet, subscription: subscription, plan: plan },
+      { _id: user._id, role: user.role, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -333,6 +324,9 @@ exports.login = async (req, res, next) => {
       profile: profile,
       user: {
         ...userData,
+        wallet: wallet,
+        subscription: subscription,
+        plan: plan,
         likedArtworks: user.likedArtworks || [],
       },
     });
@@ -419,9 +413,9 @@ exports.updateUser = async (req, res, next) => {
     if (subscription?._id) {
       userPlan = await Plan.findOne({ _id: subscription?.planId });
     }
-    // Génère un token JWT
+    // P2-ARCH-008 — Payload JWT minimal
     const token = jwt.sign(
-      { ...user, wallet: wallet, subscription: subscription, plan: userPlan },
+      { _id: user._id, role: user.role, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -576,8 +570,6 @@ exports.loginWithMetamask = async (req, res, next) => {
     const user = await User.findOne({
       email: `${address?.slice(0, 6)}@kucibok.com`,
     });
-    const users = await User.find();
-    console.log(users);
     if (!user) {
       return next(createError.notFound("Utilisateur non trouvé"));
     }
@@ -609,9 +601,9 @@ exports.loginWithMetamask = async (req, res, next) => {
     // Supprime le mot de passe de la réponse
     const { password: _, ...userData } = user.toObject();
 
-    // Génère un token JWT
+    // P2-ARCH-008 — Payload JWT minimal
     const token = jwt.sign(
-      { ...userData, wallet: wallet, subscription: subscription, plan: plan },
+      { _id: user._id, role: user.role, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -621,7 +613,7 @@ exports.loginWithMetamask = async (req, res, next) => {
       token: token,
       artist: artist,
       profile: profile,
-      user: { ...userData, likedArtworks: user.likedArtworks || [] },
+      user: { ...userData, wallet, subscription, plan, likedArtworks: user.likedArtworks || [] },
     });
   } catch (err) {
     return next(createError.internal(err.message));
@@ -661,7 +653,6 @@ exports.signUpWithMetamask = async (req, res, next) => {
         currency: "ETH",
       });
       await wallet.save();
-      console.log(wallet);
 
       let artist = null;
       let profile = null;
@@ -680,23 +671,24 @@ exports.signUpWithMetamask = async (req, res, next) => {
           username: address,
         });
         await profile.save();
-        console.log(profile);
       }
       // Supprime le mot de passe de la réponse
       const { password: _, ...userData } = user.toObject();
-      console.log(user);
-      // Génère un token JWT
+
+      // P2-ARCH-008 — Payload JWT minimal
       const token = jwt.sign(
-        { ...userData, wallet: wallet },
+        { _id: user._id, role: user.role, email: user.email },
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
       );
 
       return res.status(201).json({
-        message: "Inscrption réussie",
+        message: "Inscription réussie",
         token: token,
         artist: artist,
         profile: profile,
+        // P2-ARCH-008 — Champ user explicite (le frontend n'a plus à décoder le JWT)
+        user: { ...userData, wallet },
       });
     } catch (error) {
       return next(createError.internal(error.message));
