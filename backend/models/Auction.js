@@ -23,6 +23,14 @@ const auctionSchema = new mongoose.Schema({
     default: 0,
     min: 0,
   },
+  // P4-META-001 — Incrément minimum par offre (en devise, pas en %)
+  // Valeur fixe : plus prévisible qu'un % pour les acheteurs
+  // La logique de calcul se fait à la création de l'enchère (5% du prix de départ)
+  minBidIncrement: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   status: {
     type: String,
     enum: ["upcoming", "ongoing", "ended", "cancelled"],
