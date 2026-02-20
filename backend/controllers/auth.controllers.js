@@ -25,6 +25,8 @@ const ExcelJS = require("exceljs");
 const Artwork = require("../models/Artwork");
 const { createError } = require("../middleware/errorHandler");
 const {config} = require("../config/environnement");
+// P3-PERF-001 — pagination helper
+const { paginate } = require("../utils/paginate");
 
 
 exports.register = async (req, res, next) => {
@@ -461,12 +463,15 @@ exports.getUserByEmail = async (req, res, next) => {
   }
 };
 
+// P3-PERF-001 — paginé (?page=1&limit=20)
 exports.getAllUsers = async (req, res, next) => {
   try {
-    const users = await User.find().select("-password");
-    return res.status(200).json(users);
+    const result = await paginate(User, {}, req, {
+      select: "-password",
+      sort: { createdAt: -1 },
+    });
+    return res.status(200).json(result);
   } catch (err) {
-    console.error("Erreur Get All Users:", err.message);
     return next(createError.internal("Erreur serveur lors de la récupération des utilisateurs."));
   }
 };
