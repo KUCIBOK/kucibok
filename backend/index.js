@@ -13,8 +13,8 @@ const transporter = require("./config/mailerConfig");
 const logger = require("./utils/logger"); // P1-SEC-010
 
 
-// Cron jobs lancés
-require("./jobs/auctionCronJob");
+// Cron jobs — démarrés après connexion DB (voir start())
+const { startAuctionCron } = require("./jobs/auctionCronJob");
 require("./jobs/generateCertificates");
 require("./jobs/subscriptions.job");
 // require("./jobs/analyticsCollectionJob");
@@ -216,6 +216,9 @@ class App {
     try {
       // Connection à la base de données
       await connectDatabase();
+
+      // P3-PERF-002 — Cron démarré après la connexion DB (io=null, sera injecté en P3-PERF-003)
+      startAuctionCron(null);
 
       // Lancement du serveur
       this.server.listen(config.port, config.host, () => {
