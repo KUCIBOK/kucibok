@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const Artist = require('../models/Artist');
 const Profile = require('../models/Profile');
 const User = require('../models/User');
@@ -67,7 +68,7 @@ exports.updateProfile = async (req, res, next) => {
     res.status(200).json(updatedProfile);
   }
   catch (error) {
-    console.log(error.message)
+    logger.info(error.message)
     next(createError.internal("Erreur lors de la mise à jour du profil"));
   }
 }

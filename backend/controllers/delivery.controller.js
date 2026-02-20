@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const Delivery = require('../models/DeliveryRequest')
 const Artwork = require('../models/Artwork')
 const User = require('../models/User')
@@ -25,7 +26,7 @@ exports.createDeliveryRequest = async (req, res, next) => { //✅
         try {
             await sendDeliveryRequestNotificationToAdmin(request)
         } catch (error) {
-            console.log('Erreur', error.message)
+            logger.info('Erreur', error.message)
         }
         return res.status(201).json(request)
     } catch (error) {
@@ -89,7 +90,7 @@ exports.changeDeliveryStatus = async (req, res, next) => { //✅
         try {
             await sendDeliveryRequestNoficationToCustomer(user?.email, request)
         } catch (error) {
-            console.log("Erreur lors de l'envoi de mail", error.message)
+            logger.info("Erreur lors de l'envoi de mail", error.message)
         }
         return res.status(200).json(request)
     } catch (error) {

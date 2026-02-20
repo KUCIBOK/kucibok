@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const Gallery = require("../models/Gallery.js");
 const fs = require("fs");
 const path = require("path");
@@ -23,33 +24,33 @@ const getGalleries = async (req, res, next) => {
 // POST /api/galleries/import -> multipart/form-data (file)
 async function importGalleries(req, res, next) {
   try {
-    console.log("📥 importGalleries démarré");
+    logger.info("📥 importGalleries démarré");
 
     if (!req.file) {
-      console.warn("⚠️ Aucun fichier reçu dans req.file");
+      logger.warn("⚠️ Aucun fichier reçu dans req.file");
       return next(createError.badRequest("Aucun fichier fourni (champ 'file')."));
     }
 
-    console.log("✅ Fichier reçu :", req.file);
+    logger.info("✅ Fichier reçu :", req.file);
 
     const filePath = path.resolve(req.file.path);
     const ext = path.extname(filePath).toLowerCase();
-    console.log("📂 filePath:", filePath, "| extension:", ext);
+    logger.info("📂 filePath:", filePath, "| extension:", ext);
 
     let rows = [];
     if (ext === ".csv") {
-      console.log("➡️ Parsing CSV...");
+      logger.info("➡️ Parsing CSV...");
       rows = await parseCSV(filePath);
     } else if (ext === ".xlsx" || ext === ".xls") {
-      console.log("➡️ Parsing XLSX...");
+      logger.info("➡️ Parsing XLSX...");
       rows = parseXLSX(filePath);
     } else {
       cleanup(filePath);
-      console.error("❌ Format non supporté:", ext);
+      logger.error("❌ Format non supporté:", ext);
       return next(createError.badRequest("Format non supporté. Utilisez CSV ou XLSX."));
     }
 
-    console.log("✅ Nombre de lignes parsées:", rows.length);
+    logger.info("✅ Nombre de lignes parsées:", rows.length);
 
     const stats = {
       totalRows: rows.length,
@@ -75,37 +76,37 @@ async function importGalleries(req, res, next) {
         }
 
         const baseDoc = { name: name || "n/a", email };
-        console.log(`🔎 [Row ${idx + 1}] baseDoc:`, baseDoc);
+        logger.info(`🔎 [Row ${idx + 1}] baseDoc:`, baseDoc);
 
         const existing = await Gallery.findOne({ email }).lean();
         if (existing) {
-          console.log(`✏️ [Row ${idx + 1}] Mise à jour de ${email}`);
+          logger.info(`✏️ [Row ${idx + 1}] Mise à jour de ${email}`);
           await Gallery.updateOne({ _id: existing._id }, { $set: baseDoc });
           stats.updatedCount++;
         } else {
-          console.log(`➕ [Row ${idx + 1}] Insertion de ${email}`);
+          logger.info(`➕ [Row ${idx + 1}] Insertion de ${email}`);
           await Gallery.create(baseDoc);
           stats.insertedCount++;
         }
       } catch (e) {
-        console.error(`❌ Erreur sur la ligne ${idx + 1}:`, e);
+        logger.error(`❌ Erreur sur la ligne ${idx + 1}:`, e);
         stats.errorsCount++;
         stats.errors.push({ row: idx + 1, message: e.message });
       }
     }
 
     cleanup(filePath);
-    console.log("🧹 Fichier temporaire supprimé");
+    logger.info("🧹 Fichier temporaire supprimé");
 
     const withEmailCount = await Gallery.countDocuments({
       email: { $exists: true, $type: "string", $nin: [null, "", "-"] },
     });
 
-    console.log("📊 Stats finales:", stats);
+    logger.info("📊 Stats finales:", stats);
 
     return res.json({ ok: true, ...stats, withEmailCount });
   } catch (err) {
-    console.error("💥 Erreur fatale dans importGalleries:", err);
+    logger.error("💥 Erreur fatale dans importGalleries:", err);
     return next(createError.internal(err.message));
   }
 }

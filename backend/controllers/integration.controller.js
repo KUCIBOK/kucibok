@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const Integration = require("../models/Integration");
 const mongoose = require("mongoose");
 const createError = require("http-errors");
@@ -218,7 +219,7 @@ async function testIntegration(name, credentials) {
         return false;
     }
   } catch (error) {
-    console.error(`Test failed for ${name}:`, error.message);
+    logger.error(`Test failed for ${name}:`, error.message);
     return false;
   }
 }
@@ -234,7 +235,7 @@ async function testLogidooConnection(credentials) {
     });
     return response.status === 200;
   } catch (error) {
-    console.error("Logidoo test failed:", error.message);
+    logger.error("Logidoo test failed:", error.message);
     return false;
   }
 }
@@ -258,7 +259,7 @@ async function testCalendarConnection(credentials) {
     );
     return response.status === 200;
   } catch (error) {
-    console.error("Calendar test failed:", error.message);
+    logger.error("Calendar test failed:", error.message);
     return false;
   }
 }

@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const mongoose = require("mongoose");
 const Client = require("../models/Client");
 const { createError } = require("../middleware/errorHandler");
@@ -13,7 +14,7 @@ exports.uploadClients = async (req, res, next) => {
     const result = await clientService.processClientFileUpload(file, req.user?._id);
     res.status(201).json(result);
   } catch (err) {
-    console.error("Erreur détaillée:", err);
+    logger.error("Erreur détaillée:", err);
     if (err.message === "Format de fichier non supporté.") {
       return next(createError.badRequest(err.message));
     }
@@ -55,7 +56,7 @@ exports.addClient = async (req, res, next) => {
       client: newClient,
     });
   } catch (err) {
-    console.error("Erreur lors de l'ajout du client:", err);
+    logger.error("Erreur lors de l'ajout du client:", err);
 
     // Gestion des erreurs de duplicatas MongoDB
     if (err.code === 11000) {
@@ -79,7 +80,7 @@ exports.getAllClients = async (req, res, next) => {
       clients: clients,
     });
   } catch (error) {
-    console.error("Erreur lors de la récupération des clients:", error);
+    logger.error("Erreur lors de la récupération des clients:", error);
     next(createError.internal("Erreur lors de la récupération des clients."));
   }
 };
@@ -102,7 +103,7 @@ exports.getClientsByArtist = async (req, res, next) => {
       clients: clients,
     });
   } catch (error) {
-    console.error("Erreur lors de la récupération des clients:", error);
+    logger.error("Erreur lors de la récupération des clients:", error);
     next(createError.internal("Erreur lors de la récupération des clients."));
   }
 };
@@ -148,7 +149,7 @@ exports.updateClient = async (req, res, next) => {
       client: updatedClient,
     });
   } catch (error) {
-    console.error("Erreur lors de la mise à jour du client:", error);
+    logger.error("Erreur lors de la mise à jour du client:", error);
     next(createError.internal("Erreur lors de la mise à jour du client."));
   }
 };
@@ -173,7 +174,7 @@ exports.deleteClient = async (req, res, next) => {
       client: deletedClient,
     });
   } catch (error) {
-    console.error("Erreur lors de la suppression du client:", error);
+    logger.error("Erreur lors de la suppression du client:", error);
     next(createError.internal("Erreur lors de la suppression du client."));
   }
 };

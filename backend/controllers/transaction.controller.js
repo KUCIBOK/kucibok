@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const Transaction = require('../models/Transaction');
 const Artwork = require('../models/Artwork')
 const axios = require('axios')
@@ -10,7 +11,7 @@ exports.createTransaction = async (req, res, next) => {
     const transaction = await Transaction.create(req.body);
     res.status(201).json(transaction);
   } catch (err) {
-    console.log(err.message)
+    logger.info(err.message)
     next(createError.badRequest(err.message));
   }
 };
@@ -48,7 +49,7 @@ exports.failTransaction = async function (req, res, next) {
     
     return res.status(200).json({transaction, artwork})
   } catch (error) {
-    console.log(error)
+    logger.info(error)
     return next(createError.internal("Erreur lors de l'échec de la transaction"));
   }
 }
