@@ -1,14 +1,15 @@
 require('dotenv').config()
+const logger = require('../utils/logger');
 
 exports.errorHandler = (error, req, res, next) => {
-  // Log de l'erreur
-  console.error({
-    message: error.message,
+  // P2-ARCH-005 — Log structuré via Winston (remplace console.error)
+  logger.error(error.message, {
     stack: error.stack,
     url: req.url,
     method: req.method,
     ip: req.ip,
     userAgent: req.get('User-Agent'),
+    statusCode: error.statusCode,
   });
 
   // Erreur par défaut
@@ -124,4 +125,19 @@ exports.createError = {
 
     internal: (message, code = 'INTERNAL_ERROR') =>
         new CustomError(message, 500, code),
+};
+
+/**
+ * P2-ARCH-005 — Wrapper asyncHandler
+ *
+ * Express 5 propage déjà les rejets de promesses vers next() nativement.
+ * Ce wrapper reste utile pour :
+ *   - Compatibilité explicite si on rétrograde vers Express 4
+ *   - Clarté dans les controllers qui ne veulent pas de try/catch
+ *   - Uniformité du style de code
+ *
+ * Usage : router.get('/path', asyncHandler(async (req, res) => { ... }))
+ */
+exports.asyncHandler = (fn) => (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
 };

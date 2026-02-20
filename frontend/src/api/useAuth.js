@@ -1,4 +1,3 @@
-import { jwtDecode } from "jwt-decode";
 import { MetaMaskSDK } from "@metamask/sdk";
 import { utils } from "./useAPI";
 const { api, options } = utils;
@@ -92,13 +91,13 @@ export async function MetamaskLogin(payload) {
       body: JSON.stringify(payload),
     });
     const data = await response.json();
-    if (data?.token) {
-      const decoded = jwtDecode(data?.token);
-      const user = { ...decoded };
+    // P2-ARCH-008 — Utiliser data.user (le JWT ne contient plus les données complètes)
+    if (data?.token && data?.user) {
+      const user = { ...data.user, token: data.token };
       if (user?.role || user?._id) {
-        localStorage.setItem("token", data?.token);
+        localStorage.setItem("token", data.token);
         return {
-          user: user,
+          user,
           artist: data?.artist,
           profile: data?.profile,
         };
@@ -120,13 +119,13 @@ export async function verifyEmail(token) {
       ...options,
     });
     const data = await response.json();
-    if (data?.token) {
-      const payload = jwtDecode(data?.token);
-      const user = { ...payload, token: data?.token };
+    // P2-ARCH-008 — Utiliser data.user (le JWT ne contient plus les données complètes)
+    if (data?.token && data?.user) {
+      const user = { ...data.user, token: data.token };
       if (user?.role || user?._id) {
-        localStorage.setItem("token", data?.token);
+        localStorage.setItem("token", data.token);
         return {
-          user: user,
+          user,
           artist: data?.artist,
           profile: data?.profile,
         };
@@ -150,13 +149,13 @@ export async function MetamaskSignUp(payload) {
       body: JSON.stringify(payload),
     });
     const data = await response.json();
-    if (data?.token) {
-      const decoded = jwtDecode(data?.token);
-      const user = { ...decoded };
+    // P2-ARCH-008 — Utiliser data.user (le JWT ne contient plus les données complètes)
+    if (data?.token && data?.user) {
+      const user = { ...data.user, token: data.token };
       if (user?.role || user?._id) {
-        localStorage.setItem("token", data?.token);
+        localStorage.setItem("token", data.token);
         return {
-          user: user,
+          user,
           artist: data?.artist,
           profile: data?.profile,
         };
