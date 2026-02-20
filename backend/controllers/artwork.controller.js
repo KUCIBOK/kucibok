@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const Artwork = require("../models/Artwork");
 const Artist = require("../models/Artist");
 const User = require("../models/User");
@@ -35,7 +36,7 @@ exports.createArtwork = async (req, res, next) => {
     try {
       await sendArtworkSubmissionAlertToAdmin(artwork);
     } catch (error) {
-      console.error(
+      logger.error(
         "Erreur lors de l'envoi de l'email de soumission d'œuvre:",
         error
       );
@@ -212,7 +213,7 @@ exports.updateArtworkStatus = async (req, res, next) => {
       try {
         await sendArtworkValidationEmail(user?.email, artwork);
       } catch (error) {
-        console.error(
+        logger.error(
           "Erreur lors de l'envoi de l'email de validation d'œuvre:",
           error
         );
@@ -227,7 +228,7 @@ exports.updateArtworkStatus = async (req, res, next) => {
           "Votre œuvre a été rejetée."
         );
       } catch (error) {
-        console.error(
+        logger.error(
           "Erreur lors de l'envoi de l'email de rejet d'œuvre:",
           error
         );
@@ -363,7 +364,7 @@ exports.purchaseArtwork = async function (req, res, next) {
       );
       await sendArtworkPurchaseEmailToAdmin(artwork, transaction, user);
     } catch (error) {
-      console.error(
+      logger.error(
         "Erreur lors de l'envoi de l'email d'achat d'œuvre:",
         error
       );

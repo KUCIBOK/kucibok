@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const Visitor = require('../models/Visitor');
 const { createError } = require("../middleware/errorHandler");
 
@@ -26,10 +27,10 @@ const createVisitor = async (req, res, next) => {
 
         await newVisitor.save();
         const visitorCount = await Visitor.countDocuments();
-        console.log("Nombre de visiteurs enregistrés :", visitorCount);
+        logger.info("Nombre de visiteurs enregistrés :", visitorCount);
         res.status(201).json(newVisitor);
     } catch (error) {
-        console.error('Error creating visitor:', error);
+        logger.error('Error creating visitor:', error);
         next(createError.internal('Internal server error'));
     }
 }
@@ -39,7 +40,7 @@ const getAllVisitors = async (req, res, next) => {
         const visitors = await Visitor.find().sort({ visitDate: -1 });
         res.status(200).json(visitors);
     } catch (error) {
-        console.error('Error fetching visitors:', error);
+        logger.error('Error fetching visitors:', error);
         next(createError.internal('Internal server error'));
     }
 }
@@ -49,7 +50,7 @@ const deleteAllVisitors = async (req, res, next) => {
         await Visitor.deleteMany({});
         res.status(200).json({ message: 'All visitors deleted successfully' });
     } catch (error) {
-        console.error('Error deleting visitors:', error);
+        logger.error('Error deleting visitors:', error);
         next(createError.internal('Internal server error'));
     }
 }
@@ -73,7 +74,7 @@ const setVisitTime = (req, res, next) => {
         res.status(200).json(updatedVisitor);
     })
     .catch(error => {
-        console.error('Error updating visit time:', error);
+        logger.error('Error updating visit time:', error);
         next(createError.internal('Internal server error'));
     });
 }

@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const BlogPost = require('../models/BlogPost');
 const {createError} = require("../middleware/errorHandler");
 
@@ -12,7 +13,7 @@ exports.createPost = async (req, res, next) => {
     await post.save();
     return res.status(201).json(post);
   } catch (err) {
-    console.log(err.message)
+    logger.info(err.message)
     return next(createError.badRequest(err.message));
   }
 };
@@ -119,7 +120,7 @@ exports.publishPost = async (req, res, next) => {
     await post.save()
     return res.status(203).json(post)
   } catch (error) {
-    console.log(error.message)
+    logger.info(error.message)
     return next(createError.badRequest(error.message));
   }
 }
@@ -133,7 +134,7 @@ exports.getAllPosts = async (req, res, next) => {
     }
     return next(createError.notFound("Aucun article trouvé."));
   } catch (err) {
-    console.log(err.message)
+    logger.info(err.message)
     next(createError.internal(err.message));
   }
 };

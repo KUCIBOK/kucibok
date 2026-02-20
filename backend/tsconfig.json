@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "_comment": "P5-QUAL-001 — Configuration TypeScript progressive pour le backend Kucibok",
+  "_migration": [
+    "1. Commencer par models/*.ts (ROI le plus élevé : interfaces Mongoose typées)",
+    "2. Puis controllers par criticité : auth.controllers.ts, payment.controller.ts, bid.controller.ts",
+    "3. Puis middleware/*.ts, utils/*.ts",
+    "4. Activer strict: true dès le début pour éviter la dette de types"
+  ],
+  "compilerOptions": {
+    // --- Cible et module ---
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+
+    // --- Chemins ---
+    "rootDir": ".",
+    "outDir": "./dist",
+
+    // --- Interop JS ↔ TS (migration progressive) ---
+    "allowJs": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+
+    // --- Rigueur (strict dès le début pour éviter la dette) ---
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+
+    // --- Débogage ---
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    // --- Performance ---
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests",
+    "coverage",
+    "**/*.test.ts"
+  ]
+}

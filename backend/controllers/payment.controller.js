@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const payDunyaService = require('../services/paydunya.service');
 const Transaction = require('../models/Transaction');
 const Artwork = require('../models/Artwork');
@@ -75,7 +76,7 @@ exports.initArtworkPayment = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Erreur initArtworkPayment:', error);
+    logger.error('Erreur initArtworkPayment:', error);
     next(createError.internal("Erreur interne du serveur"));
   }
 };
@@ -131,7 +132,7 @@ exports.initSubscriptionPayment = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Erreur initSubscriptionPayment:', error);
+    logger.error('Erreur initSubscriptionPayment:', error);
     next(createError.internal("Erreur interne du serveur"));
   }
 };
@@ -147,7 +148,7 @@ exports.handlePayDunyaCallback = async (req, res, next) => {
     const result = await payDunyaService.processCallback(callbackData);
 
     if (!result.success) {
-      console.error('Erreur callback PayDunya:', result.error);
+      logger.error('Erreur callback PayDunya:', result.error);
       return next(createError.badRequest(result.error));
     }
 
@@ -166,7 +167,7 @@ exports.handlePayDunyaCallback = async (req, res, next) => {
     res.status(200).json({ message: 'Callback traité avec succès' });
 
   } catch (error) {
-    console.error('Erreur handlePayDunyaCallback:', error);
+    logger.error('Erreur handlePayDunyaCallback:', error);
     next(createError.internal("Erreur lors du traitement du callback"));
   }
 };
@@ -192,7 +193,7 @@ exports.processArtworkPurchase = async (customData, status, transactionId) => {
 
   // P1-SEC-015 — Idempotence : ignorer les callbacks en double sur une transaction terminée
   if (transaction.paymentStatus === 'completed' || transaction.paymentStatus === 'failed') {
-    console.info(`[PayDunya] callback ignoré — transaction ${transactionIdFromData} déjà en état "${transaction.paymentStatus}"`);
+    logger.info(`[PayDunya] callback ignoré — transaction ${transactionIdFromData} déjà en état "${transaction.paymentStatus}"`);
     return;
   }
 
@@ -223,7 +224,7 @@ exports.processArtworkPurchase = async (customData, status, transactionId) => {
       );
       await sendArtworkPurchaseEmailToAdmin(artwork, transaction, transaction.buyerId);
     } catch (emailError) {
-      console.error('Erreur envoi emails:', emailError);
+      logger.error('Erreur envoi emails:', emailError);
     }
 
   } else {
@@ -253,7 +254,7 @@ exports.processSubscriptionPayment = async (customData, status, transactionId) =
 
   // P1-SEC-015 — Idempotence : ignorer les callbacks en double sur un abonnement terminé
   if (subscription.status === 'active' || subscription.status === 'failed') {
-    console.info(`[PayDunya] callback ignoré — abonnement ${subscriptionIdFromData} déjà en état "${subscription.status}"`);
+    logger.info(`[PayDunya] callback ignoré — abonnement ${subscriptionIdFromData} déjà en état "${subscription.status}"`);
     return;
   }
 
@@ -300,7 +301,7 @@ exports.verifyPayDunyaPayment = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Erreur verifyPayDunyaPayment:', error);
+    logger.error('Erreur verifyPayDunyaPayment:', error);
     next(createError.internal("Erreur interne du serveur"));
   }
 };
