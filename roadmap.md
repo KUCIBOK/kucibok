@@ -1,6 +1,6 @@
 # ROADMAP KUCIBOK — Audit Complet & Plan de Remédiation
 
-**Version:** 1.2 | **Date:** 19 février 2026 | **Statut:** Phase 0 ✅ Phase 1 ✅ — Phase 2 à venir
+**Version:** 1.3 | **Date:** 20 février 2026 | **Statut:** Phase 0 ✅ Phase 1 ✅ Phase 2 ✅ — Phase 3 à venir
 
 > Ce document est le résultat d'un audit senior couvrant : Sécurité, Scalabilité, Performance, UX/UI, Logique Métier, Architecture, et Tests Unitaires.
 
@@ -248,7 +248,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ## PHASE 2 — ARCHITECTURE ET QUALITÉ (Semaine 3-4)
 
 ### [P2-ARCH-001] 🟡 Refactoriser le middleware d'authentification
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait en Phase 0 — `fix/phase-0-bypass-cors-logidoo` (commit `180778c`) — `requireRole(...roles)` factory, 180 → 52 lignes
 - **Fichiers :** `backend/middleware/auth.js` (180 lignes, 5 fonctions quasi-identiques)
 - **Plan :**
   ```
@@ -262,7 +262,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P2-ARCH-002] 🟡 Supprimer les dépendances serveur du frontend
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-2-frontend-deps` (commit `2ae04ba`) — express, nodemailer, next supprimés (~15 Mo node_modules)
 - **Fichiers :** `frontend/package.json`
 - **Problème :** `express`, `nodemailer`, `next` dans les dépendances frontend → bundle de production gonflé.
 - **Actions :**
@@ -273,7 +273,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P2-ARCH-003] 🟡 Isoler le code de développement hors du serveur principal
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait en Phase 0 — `fix/phase-0-bypass-cors-logidoo` (commit `180778c`) — endpoints bypass supprimés de index.js
 - **Fichiers :** `backend/index.js:122-203`
 - **Actions :**
   1. Extraire en `backend/routes/dev.routes.js`
@@ -295,7 +295,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P2-ARCH-005] 🟡 Standardiser la gestion des erreurs async (Express 5)
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-2-async-handler` (commit `e14de0b`) — asyncHandler exporté + console.error → logger.error dans errorHandler
 - **Fichiers :** Tous les controllers
 - **Note :** Express 5 gère nativement les rejets de promesses. Standardiser autour de `middleware/errorHandler.js` existant.
 - **Actions :**
@@ -326,7 +326,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P2-ARCH-008] 🟡 Réarchitecturer les tokens JWT
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait (partiel) — `fix/phase-2-jwt-payload` (commit `19295e5`) — payload réduit à { _id, role, email }, champ user explicite dans les réponses, suppression jwtDecode côté frontend. Redis/jti/refresh token reportés en Phase 3+
 - **Fichiers :** `backend/controllers/auth.controllers.js:323-326`
 - **Problème :** Tokens contenant wallet + subscription + plan complets (plusieurs KB), non révocables.
 - **Actions :**
@@ -374,7 +374,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P3-PERF-004] 🟢 Corriger la race condition sur les enchères
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-2-bid-race-condition` (commit `d19badb`) — findOneAndUpdate atomique avec condition { currentPrice: { $lt: amount } }, 409 Conflict si concurrence
 - **Fichiers :** `backend/controllers/bid.controller.js:32-49`
 - **Problème :** Vérification du prix + mise à jour sans transaction MongoDB. Deux enchères simultanées peuvent corrompre l'état.
 - **Actions :**
