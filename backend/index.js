@@ -1,4 +1,5 @@
 const http = require('http');
+const { Server: SocketIOServer } = require("socket.io"); // P3-PERF-003
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -11,6 +12,7 @@ const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const protect = require('./middleware/api');
 const transporter = require("./config/mailerConfig");
 const logger = require("./utils/logger"); // P1-SEC-010
+const { setIO, getIO } = require("./utils/socket"); // P3-PERF-003
 
 
 // Cron jobs — démarrés après connexion DB (voir start())
@@ -60,6 +62,27 @@ class App {
     constructor() {
         this.app = express();
         this.server = http.createServer(this.app);
+
+        // P3-PERF-003 — Socket.IO attaché au serveur HTTP
+        const io = new SocketIOServer(this.server, {
+            cors: {
+                origin: config.cors.origin,
+                methods: ["GET", "POST"],
+                credentials: true,
+            },
+        });
+        setIO(io);
+
+        // Rooms par enchère : le client émet join:auction avec l'auctionId
+        io.on("connection", (socket) => {
+            socket.on("join:auction", (auctionId) => {
+                socket.join(`auction:${auctionId}`);
+            });
+            socket.on("leave:auction", (auctionId) => {
+                socket.leave(`auction:${auctionId}`);
+            });
+        });
+
         this.initializeMiddlewares();
         this.initializeRoutes();
         this.initializeErrorsHandlers();
@@ -217,8 +240,8 @@ class App {
       // Connection à la base de données
       await connectDatabase();
 
-      // P3-PERF-002 — Cron démarré après la connexion DB (io=null, sera injecté en P3-PERF-003)
-      startAuctionCron(null);
+      // P3-PERF-002/003 — Cron démarré après la connexion DB, io injecté pour emit auction:ended
+      startAuctionCron(getIO());
 
       // Lancement du serveur
       this.server.listen(config.port, config.host, () => {
