@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const Subscription = require('../models/Subscription')
 const User = require('../models/User')
 const Plan = require('../models/Plan');
@@ -54,7 +55,7 @@ exports.activateSubscription = async (req, res, next) => {
             await sendSubscriptionPaymentEmailToUser(user?.name, sub);
             await sendSubscriptionPaymentEmailToAdmin(sub, user);
         } catch (error) {
-            console.error("Erreur lors de l'envoi des emails de paiement d'abonnement:", error);
+            logger.error("Erreur lors de l'envoi des emails de paiement d'abonnement:", error);
         }
         
         return res.json({sub, plan})
@@ -82,7 +83,7 @@ exports.getAllSubscriptions = async (req, res, next) => {
         const subscriptions = await Subscription.find().sort({ startDate: -1 });
         res.status(200).json(subscriptions);
     } catch (error) {
-        console.error('Error fetching subscriptions:', error);
+        logger.error('Error fetching subscriptions:', error);
         next(createError.internal('Internal server error'));
     }
 }
@@ -114,7 +115,7 @@ exports.getUserActiveSubscription = async (req, res, next) => {
         }
         res.status(200).json({...subscription, ...plan});
     } catch (error) {
-        console.error('Error fetching active user subscription:', error);
+        logger.error('Error fetching active user subscription:', error);
         next(createError.internal('Internal server error'));
     }
 }
@@ -128,7 +129,7 @@ exports.getActiveSubscriptions = async (req, res, next) => {
         }
         res.status(200).json(subscriptions);
     } catch (error) {
-        console.error('Error fetching active subscriptions:', error);
+        logger.error('Error fetching active subscriptions:', error);
         next(createError.internal('Internal server error'));
     }
 }

@@ -1,4 +1,5 @@
 require("dotenv").config();
+const logger = require('../utils/logger');
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
@@ -137,14 +138,14 @@ exports.register = async (req, res, next) => {
       const verifyLink = `${config.cors.origin}/verify-email/${verificationToken}`;
       await sendVerificationEmail(user.email, user.name, verifyLink);
     } catch (error) {
-      console.warn("Erreur lors de l'envoi de l'email:", error.message);
+      logger.warn("Erreur lors de l'envoi de l'email:", error.message);
     }
     return res.status(201).json({
       user: { ...user.toObject(), password: undefined },
       message: "Compte créé. Vérifiez votre adresse email pour continuer.",
     });
   } catch (err) {
-    console.error("Erreur Register:", err);
+    logger.error("Erreur Register:", err);
     return next(createError.internal("Erreur serveur lors de l'inscription."));
   }
 };
@@ -176,7 +177,7 @@ exports.verifyEmail = async (req, res, next) => {
       await sendWelcomeEmail(user?.email, user?.name);
       await sendUserRegistrationAlertToAdmin(user);
     } catch (error) {
-      console.warn("Erreur lors de l'envoi de l'alerte:", error.message);
+      logger.warn("Erreur lors de l'envoi de l'alerte:", error.message);
     }
     let artist = null;
     let profile = null;
@@ -248,7 +249,7 @@ exports.resendVerificationEmail = async (req, res, next) => {
       message: "Un nouvel email de vérification a été envoyé.",
     });
   } catch (err) {
-    console.error("Erreur resend email:", err);
+    logger.error("Erreur resend email:", err);
     return next(createError.internal("Erreur serveur lors du renvoi de l'email."));
   }
 };
@@ -395,7 +396,7 @@ exports.updateUser = async (req, res, next) => {
         await sendEmailChangeNotification(oldMail, user.email);
         await sendEmailChangeNotification(user.email, user.email);
       } catch (error) {
-        console.error(
+        logger.error(
           "Erreur lors de l'envoi de la notification de changement d'email:",
           error
         );
@@ -424,7 +425,7 @@ exports.updateUser = async (req, res, next) => {
     const { password: _, ...userData } = user.toObject();
     return res.status(200).json({ ...userData, token: token });
   } catch (err) {
-    console.error("Erreur Update User:", err.message);
+    logger.error("Erreur Update User:", err.message);
     return next(createError.internal("Erreur serveur lors de la mise à jour."));
   }
 };
@@ -441,7 +442,7 @@ exports.getUserById = async (req, res, next) => {
     const { password: _, ...userData } = user.toObject();
     return res.status(200).json(userData);
   } catch (err) {
-    console.error("Erreur Get User:", err.message);
+    logger.error("Erreur Get User:", err.message);
     return next(createError.internal("Erreur serveur lors de la récupération de l'utilisateur."));
   }
 };
@@ -458,7 +459,7 @@ exports.getUserByEmail = async (req, res, next) => {
     const { password: _, ...userData } = user.toObject();
     return res.status(200).json(userData);
   } catch (err) {
-    console.error("Erreur Get User:", err.message);
+    logger.error("Erreur Get User:", err.message);
     return next(createError.internal("Erreur serveur lors de la récupération de l'utilisateur par email."));
   }
 };
@@ -487,28 +488,28 @@ exports.deleteUser = async (req, res, next) => {
     }
     // Supprime l'utilisateur
     await User.findOneAndDelete({ _id: id })
-      .then(() => console.log("Utilisateur supprimé"))
-      .catch(() => console.log("Erreur lors de la suppression"));
+      .then(() => logger.info("Utilisateur supprimé"))
+      .catch(() => logger.info("Erreur lors de la suppression"));
 
     await Artist.deleteMany({ userId: id })
-      .then(() => console.log("Artist supprimé"))
-      .catch(() => console.log("Erreur lors de la suppression"));
+      .then(() => logger.info("Artist supprimé"))
+      .catch(() => logger.info("Erreur lors de la suppression"));
 
     await Artwork.deleteMany({ userId: id })
-      .then(() => console.log("Oeuvre supprimé"))
-      .catch(() => console.log("Erreur lors de la suppression"));
+      .then(() => logger.info("Oeuvre supprimé"))
+      .catch(() => logger.info("Erreur lors de la suppression"));
 
     await Profile.findOneAndDelete({ userId: id })
-      .then(() => console.log("Profil supprimé"))
-      .catch(() => console.log("Erreur lors de la suppression"));
+      .then(() => logger.info("Profil supprimé"))
+      .catch(() => logger.info("Erreur lors de la suppression"));
 
     await WalletModel.findOneAndDelete({ userId: id })
-      .then(() => console.log("Wallet supprimé"))
-      .catch(() => console.log("Erreur lors de la suppression"));
+      .then(() => logger.info("Wallet supprimé"))
+      .catch(() => logger.info("Erreur lors de la suppression"));
 
     return res.status(200).json(user);
   } catch (err) {
-    console.error("Erreur Delete User:", err.message);
+    logger.error("Erreur Delete User:", err.message);
     return next(createError.internal("Erreur serveur lors de la suppression de l'utilisateur."));
   }
 };
@@ -553,7 +554,7 @@ exports.deleteAllUsers = async (req, res, next) => {
       .json({ message: "Tous les utilisateurs ont été supprimés avec succès." });
   } catch (err) {
     await session.abortTransaction();
-    console.error("Erreur Delete All Users:", err.message);
+    logger.error("Erreur Delete All Users:", err.message);
     return next(createError.internal("Erreur serveur lors de la suppression de tous les utilisateurs."));
   } finally {
     session.endSession();
@@ -720,14 +721,14 @@ exports.changePassword = async (req, res, next) => {
     try {
       await sendPasswordChangeNotification(user?.email);
     } catch (error) {
-      console.error(
+      logger.error(
         "Erreur lors de l'envoi de la notification de changement de mot de passe:",
         error
       );
     }
     return res.json({ ...userData });
   } catch (error) {
-    console.log(error.message);
+    logger.info(error.message);
     return next(createError.internal("Erreur serveur lors du changement de mot de passe."));
   }
 };
@@ -750,7 +751,7 @@ exports.forgotPassword = async (req, res, next) => {
     try{
       await sendPasswordResetEmail(user.email, resetLink);
     }catch (error){
-      console.error("Erreur lors de l'envoi de l'email de réinitialisation:", error);
+      logger.error("Erreur lors de l'envoi de l'email de réinitialisation:", error);
       return next(createError.internal("Erreur lors de l'envoi de l'email de réinitialisation."));
     }
 
@@ -758,7 +759,7 @@ exports.forgotPassword = async (req, res, next) => {
       .status(200)
       .json({ message: "Email de réinitialisation envoyé." });
   } catch (error) {
-    console.error("Erreur forgotPassword:", error);
+    logger.error("Erreur forgotPassword:", error);
     return next(createError.internal("Erreur serveur lors de la réinitialisation du mot de passe."));
   }
 };
@@ -788,7 +789,7 @@ exports.resetPassword = async (req, res, next) => {
     try {
       await sendPasswordChangeNotification(user?.email);
     } catch (error) {
-      console.error(
+      logger.error(
         "Erreur lors de l'envoi de la notification de changement de mot de passe:",
         error
       );
@@ -797,7 +798,7 @@ exports.resetPassword = async (req, res, next) => {
       .status(200)
       .json({ message: "Mot de passe réinitialisé avec succès." });
   } catch (error) {
-    console.error("Erreur resetPassword:", error);
+    logger.error("Erreur resetPassword:", error);
     return next(createError.internal("Erreur serveur lors de la réinitialisation du mot de passe."));
   }
 };
@@ -895,7 +896,7 @@ exports.exportDataOnExcelFormat = async (req, res, next) => {
     res.end();
     return;
   } catch (error) {
-    console.error("Erreur export data:", error);
+    logger.error("Erreur export data:", error);
     return next(createError.internal("Erreur serveur lors de l'export des données."));
   }
 };

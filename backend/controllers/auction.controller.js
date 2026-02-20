@@ -96,7 +96,7 @@ exports.getAuctionById = async (req, res, next) => {
 
     res.status(200).json(auction);
   } catch (error) {
-    console.error(error);
+    logger.error(error);
     next(createError.internal("Erreur serveur lors de la récupération de l'enchère."));
   }
 };
@@ -147,7 +147,7 @@ exports.getAuctionDetails = async (req, res, next) => {
 
     res.status(200).json(response);
   } catch (error) {
-    console.error(error);
+    logger.error(error);
     next(createError.internal("Erreur serveur lors de la récupération des détails de l'enchère."));
   }
 };
