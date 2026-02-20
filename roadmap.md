@@ -1,6 +1,6 @@
 # ROADMAP KUCIBOK — Audit Complet & Plan de Remédiation
 
-**Version:** 1.3 | **Date:** 20 février 2026 | **Statut:** Phase 0 ✅ Phase 1 ✅ Phase 2 ✅ — Phase 3 à venir
+**Version:** 1.4 | **Date:** 20 février 2026 | **Statut:** Phase 0 ✅ Phase 1 ✅ Phase 2 ✅ Phase 3 ✅ — Phase 4 à venir
 
 > Ce document est le résultat d'un audit senior couvrant : Sécurité, Scalabilité, Performance, UX/UI, Logique Métier, Architecture, et Tests Unitaires.
 
@@ -341,7 +341,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ## PHASE 3 — PERFORMANCE ET SCALABILITÉ (Semaine 5-6)
 
 ### [P3-PERF-001] 🟢 Implémenter la pagination sur tous les endpoints de liste
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-3-pagination` (commit `03d4e7a`) — helper `paginate()` + lean(), appliqué sur `getAllArtworks`, `getForSaleArtworks`, `getApprovedArtworks`, `getOngoingAuctions`, `getAllUsers`
 - **Fichiers :** `backend/controllers/auth.controllers.js:466, 791`, `backend/controllers/artwork.controller.js`, `backend/controllers/auction.controller.js`
 - **Actions :**
   1. Créer un helper `paginate(Model, query, req)` → `{ data, total, page, totalPages }`
@@ -351,7 +351,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P3-PERF-002] 🟢 Optimiser le cron job des enchères
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-3-cron` (commit `5717448`) — fréquence réduite à `*/5 * * * *`, sortie anticipée via `Auction.exists()`, console.* → logger, export `startAuctionCron(io)`, démarré après connexion DB
 - **Fichiers :** `backend/jobs/auctionCronJob.js:43`
 - **Problème :** Tourne toutes les minutes même sans enchères actives.
 - **Actions :**
@@ -362,7 +362,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P3-PERF-003] 🟢 Implémenter les WebSockets pour les enchères en temps réel
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-3-websockets` (commit `24477e6`) — socket.io 4.8.3, singleton `utils/socket.js`, rooms `auction:{id}`, `bid:new` depuis bid controller, `auction:ended` depuis cron
 - **Fichiers :** `backend/index.js:61`, controllers auction et bid
 - **Actions :**
   1. Intégrer `socket.io` avec le serveur HTTP existant (`this.server`)
@@ -386,7 +386,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P3-PERF-005] 🟢 Corriger la durée de subscription hardcodée
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait en Phase 1 — `fix/phase-1-payment-idempotence` — `durationDays` lu depuis `plan.durationDays` avec fallback 30j
 - **Fichiers :** `backend/controllers/payment.controller.js:252`
 - **Problème :** `Date.now() + 30 * 24 * 60 * 60 * 1000` en dur, ignore la durée réelle du plan.
 - **Actions :**
@@ -397,7 +397,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P3-PERF-006] 🟢 Optimiser les requêtes MongoDB (lean + indexes)
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-3-pagination` (commit `03d4e7a`) — `.lean()` sur toutes les requêtes list via helper paginate, 3 index composés ajoutés dans `Auction` model : `{status,startTime}`, `{status,endTime}`, `{status,endTime,currentPrice}`
 - **Fichiers :** `backend/controllers/auction.controller.js:96-115`
 - **Actions :**
   1. Ajouter `.lean()` sur toutes les requêtes de liste en lecture seule (gain x5-10)
@@ -407,7 +407,7 @@ Le projet est une plateforme de vente d'art africain avec enchères, wallets Eth
 ---
 
 ### [P3-PERF-007] 🟢 Corriger la lecture statique du token dans useAPI.js
-- [ ] **Statut :** À faire
+- [x] **Statut :** ✅ Fait — `fix/phase-3-useapi-token` (commit `0790ba4`) — `options` converti en getter JS, `localStorage.getItem("token")` réévalué à chaque appel
 - **Fichiers :** `frontend/src/api/useAPI.js:11`
 - **Problème :** Token lu à l'initialisation du module → `null` si l'utilisateur se connecte après le chargement.
 - **Action :** Lire `localStorage.getItem("token")` dynamiquement à chaque appel API via un getter.
