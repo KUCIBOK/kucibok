@@ -11,6 +11,8 @@ const {
   sendArtworkPurchaseEmailToAdmin,
 } = require("../services/mailer.service");
 const {createError} = require("../middleware/errorHandler");
+// P3-PERF-001 — pagination helper
+const { paginate } = require("../utils/paginate");
 
 exports.createArtwork = async (req, res, next) => {
   try {
@@ -45,29 +47,28 @@ exports.createArtwork = async (req, res, next) => {
   }
 };
 
+// P3-PERF-001 — paginé (?page=1&limit=20)
 exports.getAllArtworks = async (req, res, next) => {
   try {
-    const artworks = await Artwork.find();
-
-    if (artworks?.length > 0) {
-      return res.status(200).json(artworks);
-    }
-    next(createError.notFound("Aucune oeuvre trouvée"));
+    const result = await paginate(Artwork, {}, req, { sort: { createdAt: -1 } });
+    if (result.total === 0) return next(createError.notFound("Aucune oeuvre trouvée"));
+    return res.status(200).json(result);
   } catch (error) {
     next(error);
   }
 };
 
+// P3-PERF-001 — paginé (?page=1&limit=20)
 exports.getForSaleArtworks = async (req, res, next) => {
   try {
-    const artworks = await Artwork.find({
-      forSale: true,
-      status: "approved",
-    });
-    if (artworks?.length > 0) {
-      return res.status(200).json(artworks);
-    }
-    next(createError.notFound("Aucune oeuvre trouvée"));
+    const result = await paginate(
+      Artwork,
+      { forSale: true, status: "approved" },
+      req,
+      { sort: { createdAt: -1 } }
+    );
+    if (result.total === 0) return next(createError.notFound("Aucune oeuvre trouvée"));
+    return res.status(200).json(result);
   } catch (error) {
     next(error);
   }
@@ -121,15 +122,12 @@ exports.getPendingArtworks = async (req, res, next) => {
   }
 };
 
+// P3-PERF-001 — paginé (?page=1&limit=20)
 exports.getApprovedArtworks = async (req, res, next) => {
   try {
-    const artworks = await Artwork.find({
-      status: "approved",
-    });
-    if (artworks?.length >= 1) {
-      return res.status(200).json(artworks);
-    }
-    next(createError.notFound("Aucune oeuvre trouvée"));
+    const result = await paginate(Artwork, { status: "approved" }, req, { sort: { createdAt: -1 } });
+    if (result.total === 0) return next(createError.notFound("Aucune oeuvre trouvée"));
+    return res.status(200).json(result);
   } catch (error) {
     next(error);
   }

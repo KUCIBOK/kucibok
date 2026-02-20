@@ -1,6 +1,9 @@
 const Auction = require("../models/Auction");
 const Artwork = require("../models/Artwork");
 const {createError} = require("../middleware/errorHandler");
+const logger = require("../utils/logger");
+// P3-PERF-001 — pagination helper
+const { paginate } = require("../utils/paginate");
 
 exports.createAuction = async (req, res, next) => {
   try {
@@ -50,25 +53,25 @@ exports.createAuction = async (req, res, next) => {
   }
 };
 
+// P3-PERF-001 — paginé + lean() (?page=1&limit=20)
 exports.getOngoingAuctions = async (req, res, next) => {
   try {
     const now = new Date();
-    console.log(`Fetching ongoing auctions at ${now}`);
-
-    const auctions = await Auction.find({
-      status: "ongoing",
-      startTime: { $lte: now },
-      endTime: { $gte: now },
-    })
-      .populate("artwork", "title image")
-      .populate("seller", "name");
-
-    console.log(`Found ${auctions.length} auctions`);
-    console.log(auctions);
-
-    res.status(200).json(auctions);
+    const result = await paginate(
+      Auction,
+      { status: "ongoing", startTime: { $lte: now }, endTime: { $gte: now } },
+      req,
+      {
+        populate: [
+          { path: "artwork", select: "title image" },
+          { path: "seller", select: "name" },
+        ],
+        sort: { endTime: 1 }, // Les plus proches de la fin en premier
+      }
+    );
+    res.status(200).json(result);
   } catch (error) {
-    console.error(error);
+    logger.error("Erreur lors du chargement des enchères", { error: error.message });
     next(createError.internal("Erreur lors du chargement des enchères."));
   }
 };
