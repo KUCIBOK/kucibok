@@ -53,4 +53,12 @@ const auctionSchema = new mongoose.Schema({
   },
 });
 
+// P3-PERF-006 — Index composés pour le cron et les requêtes list
+// Cron upcoming → ongoing  : { status, startTime }
+// Cron ongoing  → ended    : { status, endTime }
+// Bid controller            : { status, endTime, currentPrice }
+auctionSchema.index({ status: 1, startTime: 1 });
+auctionSchema.index({ status: 1, endTime: 1 });
+auctionSchema.index({ status: 1, endTime: 1, currentPrice: 1 });
+
 module.exports = mongoose.model("Auction", auctionSchema);

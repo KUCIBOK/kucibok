@@ -1,6 +1,7 @@
 const Auction = require("../models/Auction");
 const Bid = require("../models/Bid");
 const { createError } = require("../middleware/errorHandler");
+const { getIO } = require("../utils/socket"); // P3-PERF-003
 
 exports.placeBid = async (req, res, next) => {
   try {
@@ -69,6 +70,15 @@ exports.placeBid = async (req, res, next) => {
 
     // $push séparé, non critique pour l'atomicité du prix
     await Auction.updateOne({ _id: auctionId }, { $push: { bids: bid._id } });
+
+    // P3-PERF-003 — Diffuser la nouvelle enchère en temps réel
+    getIO()?.to(`auction:${auctionId}`).emit("bid:new", {
+      auctionId,
+      amount,
+      bidderId: userId,
+      bidId: bid._id,
+      createdAt: bid.createdAt,
+    });
 
     return res.status(201).json({ message: "Offre placée avec succès.", bid });
   } catch (error) {
