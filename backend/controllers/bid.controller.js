@@ -10,9 +10,9 @@ exports.placeBid = async (req, res, next) => {
     const now = new Date();
 
     // --- Vérifications préliminaires non-concurrentielles ---
-    // (seller et status ne changent pas pendant la vie de l'enchère)
+    // (seller, status et minBidIncrement ne changent pas pendant la vie de l'enchère)
     const auctionCheck = await Auction.findById(auctionId)
-      .select("status startTime endTime seller currentPrice");
+      .select("status startTime endTime seller currentPrice minBidIncrement");
 
     if (!auctionCheck) {
       return next(createError.notFound("Enchère introuvable."));
@@ -30,24 +30,27 @@ exports.placeBid = async (req, res, next) => {
       return next(createError.forbidden("Tu ne peux pas enchérir sur ta propre enchère."));
     }
 
-    if (amount <= auctionCheck.currentPrice) {
+    // P4-META-001 — Validation de l'incrément minimum
+    const increment = auctionCheck.minBidIncrement || 0;
+    const minRequired = auctionCheck.currentPrice + increment;
+    if (amount < minRequired) {
       return next(
         createError.badRequest(
-          `Le montant doit être supérieur au prix actuel (${auctionCheck.currentPrice}).`
+          `Le montant minimum est de ${minRequired} (prix actuel ${auctionCheck.currentPrice} + incrément ${increment}).`
         )
       );
     }
 
     // P3-PERF-004 — Mise à jour ATOMIQUE avec condition de prix
-    // La condition { currentPrice: { $lt: amount } } est évaluée et appliquée
-    // en une seule opération MongoDB. Si deux enchères arrivent simultanément,
-    // une seule peut satisfaire la condition → l'autre reçoit null.
+    // La condition est évaluée et appliquée en une seule opération MongoDB.
+    // Si deux enchères arrivent simultanément, une seule satisfait la condition.
+    // P4-META-001 — La garde intègre minBidIncrement : currentPrice <= amount - increment
     const previousAuction = await Auction.findOneAndUpdate(
       {
         _id: auctionId,
         status: "ongoing",
         endTime: { $gte: now },
-        currentPrice: { $lt: amount }, // Garde atomique anti race condition
+        currentPrice: { $lte: amount - increment }, // Garde atomique avec incrément
       },
       {
         $set: { currentPrice: amount, winner: userId },
