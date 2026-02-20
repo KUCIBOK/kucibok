@@ -32,11 +32,16 @@ exports.createAuction = async (req, res, next) => {
       return next(createError.badRequest("La date de fin doit être après la date de début."));
     }
 
+    // P4-META-001 — Incrément minimum = 5% du prix de départ (arrondi à l'entier)
+    // Valeur fixe en devise → prévisible pour les acheteurs tout au long de l'enchère
+    const minBidIncrement = Math.max(1, Math.round(startingPrice * 0.05));
+
     const auction = new Auction({
       artwork: artworkId,
       seller: req.user._id,
       startingPrice,
       currentPrice: startingPrice,
+      minBidIncrement,
       startTime,
       endTime,
       status: "upcoming", // On démarre comme "à venir"
@@ -48,7 +53,7 @@ exports.createAuction = async (req, res, next) => {
       .status(201)
       .json({ message: "Enchère créée avec succès.", auction });
   } catch (error) {
-    console.error("Erreur lors de la création d'une enchère:", error);
+    logger.error("Erreur lors de la création d'une enchère", { message: error.message });
     next(createError.internal("Erreur serveur lors de la création de l'enchère."));
   }
 };
