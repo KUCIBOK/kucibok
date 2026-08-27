@@ -80,9 +80,13 @@ export const ArtworksList = ({ artworks, user }) => {
       ? [
           {
             header: 'Créé',
-            accessor: 'created',
+            accessor: 'created_at',
             sortable: true,
-            render: (value) => new Date(value).toLocaleDateString('fr-FR'),
+            render: (value) => {
+              if (!value) return '—'
+              const date = new Date(value)
+              return isNaN(date.getTime()) ? '—' : date.toLocaleDateString('fr-FR')
+            },
           },
           {
             header: 'Statut',
