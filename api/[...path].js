@@ -553,13 +553,15 @@ export default async function handler(req, res) {
           }
 
           // Create user profile in public.users
+          // Note: Only include columns that exist in public.users table
+          // Available columns: id, name, username, role, country, telephone, auth_provider, profile_completed, onboarding_completed, is_active, last_login, created_at
           const { error: profileError } = await supabaseAdmin.from('users').insert({
             id: data.user.id,
-            email: data.user.email,
             role: role || 'buyer',
             name: name || email.split('@')[0],
             country: country || null,
-            institution: institution || null,
+            auth_provider: 'email',
+            is_active: true,
           })
 
           if (profileError) {
@@ -582,6 +584,63 @@ export default async function handler(req, res) {
         } catch (err) {
           console.error('[Signup Exception]', err.message)
           return res.status(500).json({ error: err.message || 'Signup failed' })
+        }
+      }
+
+      // POST /api/auth/signin — Login with email + password
+      if (req.method === 'POST' && s1 === 'signin') {
+        try {
+          const { email, password } = req.body
+
+          if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' })
+          }
+
+          // ✅ FIX: Use service_role to authenticate (backend can do this)
+          // Supabase admin.auth allows password sign-in without exposing keys
+          const { data, error } = await supabaseAdmin.auth.admin.signInWithPassword({
+            email,
+            password,
+          })
+
+          if (error) {
+            console.error('[Signin Auth Error]', error.message)
+            return res.status(401).json({
+              error: error.message.includes('Invalid login credentials')
+                ? 'Invalid email or password'
+                : error.message,
+            })
+          }
+
+          if (!data.session || !data.user) {
+            return res.status(401).json({ error: 'Login failed - no session' })
+          }
+
+          // Get full user profile
+          const { data: profile } = await supabaseAdmin
+            .from('users')
+            .select('*')
+            .eq('id', data.user.id)
+            .single()
+
+          return res.status(200).json({
+            success: true,
+            data: {
+              session: {
+                access_token: data.session.access_token,
+                refresh_token: data.session.refresh_token,
+                expires_in: data.session.expires_in,
+              },
+              user: profile || {
+                id: data.user.id,
+                email: data.user.email,
+                role: 'buyer',
+              },
+            },
+          })
+        } catch (err) {
+          console.error('[Signin Exception]', err.message)
+          return res.status(500).json({ error: err.message || 'Login failed' })
         }
       }
 
