@@ -33,12 +33,15 @@ const { api } = utils
 export async function fetchArtworks(params = {}) {
   try {
     const qs = new URLSearchParams(params).toString()
-    const response = await fetchWithTimeout(`${api}/artworks${qs ? `?${qs}` : ''}`, {
+    const url = `${api}/artworks${qs ? `?${qs}` : ''}`
+    console.log('[fetchArtworks] URL:', url) // DEBUG
+    const response = await fetchWithTimeout(url, {
       ...utils.options,
     })
     const body = await response.json()
     if (!response.ok) return { error: body?.error || 'Erreur serveur' }
     // Extrait correctement le tableau d'artworks de la réponse
+    console.log('[fetchArtworks] Returned count:', body?.count || body?.artworks?.length || body?.length) // DEBUG
     return Array.isArray(body) ? body : (body?.artworks ?? body?.data ?? [])
   } catch (err) {
     return { error: err.message }
