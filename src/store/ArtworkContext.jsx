@@ -121,31 +121,41 @@ export const ArtworksContextProvider = ({ children }) => {
             rejected: Array.isArray(rejected) ? [...rejected].reverse() : [],
           }))
         }
+        // ✅ ARTIST: Fetch only their own artworks (by artist_id)
         if (user?.role == 'artist' && artistProfile?.id) {
-          const myArtworks = await getMyArtworks(artistProfile?.id)
+          const result = await getMyArtworks(artistProfile?.id)
+          const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
           setState((prev) => ({
             ...prev,
-            myArtworks: myArtworks?.length > 0 ? myArtworks : [],
+            myArtworks,
           }))
         }
 
+        // ✅ BUYER: Fetch their purchases
         if (user?.role == 'buyer') {
-          const buyed = await getOwnerArtworks(user?._id)
-          const myArtworks = await getManagedArtworks()
+          const buyedResult = await getOwnerArtworks(user?._id)
+          const managedResult = await getManagedArtworks()
+          const buyed = buyedResult?.error ? [] : (Array.isArray(buyedResult) ? buyedResult : [])
+          const myArtworks = managedResult?.error ? [] : (Array.isArray(managedResult) ? managedResult : [])
           setState((prev) => ({
             ...prev,
-            buyed: buyed?.length > 0 ? buyed?.reverse() : [],
-            myArtworks: myArtworks?.length > 0 ? myArtworks?.reverse() : [],
+            buyed: buyed?.length > 0 ? [...buyed].reverse() : [],
+            myArtworks: myArtworks?.length > 0 ? [...myArtworks].reverse() : [],
           }))
         }
+
+        // ✅ CURATOR: Fetch managed artworks
         if (user?.role == 'curator') {
-          const myArtworks = await getManagedArtworks()
+          const result = await getManagedArtworks()
+          const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
           setState((prev) => ({
             ...prev,
-            myArtworks: myArtworks?.length > 0 ? myArtworks?.reverse() : [],
+            myArtworks: myArtworks?.length > 0 ? [...myArtworks].reverse() : [],
           }))
         }
       }
+      // ✅ CRITICAL: Always await the profile artworks load
+      // This prevents rendering the dashboard before myArtworks is loaded
       getProfileArtworks()
     }
   }, [user?._id, user?.role, artistProfile?.id, curatorProfile?._id])
