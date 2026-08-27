@@ -271,8 +271,35 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'Validation failed', errors: validationErrors })
         }
 
-        // ✅ CRITICAL: Ensure user_id matches authenticated user (no spoofing)
-        const body = { ...req.body, user_id: user.id, artist_id: user.id }
+        // ✅ FIX: Get the correct artist_id from the artists table
+        // The user creating the artwork should have an artist record
+        let artistId = null
+
+        const { data: existingArtist } = await supabaseAdmin
+          .from('artists')
+          .select('id')
+          .eq('user_id', user.id)
+          .single()
+
+        if (existingArtist && existingArtist.id) {
+          artistId = existingArtist.id
+        } else {
+          // Create artist record if it doesn't exist (for users who create artworks without a profile)
+          const { data: newArtist, error: createError } = await supabaseAdmin
+            .from('artists')
+            .insert([{ user_id: user.id }])
+            .select()
+
+          if (createError) {
+            console.warn('[Create Artwork] Failed to create artist record:', createError.message)
+            // Don't fail — use NULL and let frontend handle it
+          } else if (newArtist && newArtist[0]) {
+            artistId = newArtist[0].id
+          }
+        }
+
+        // ✅ CRITICAL: Ensure user_id and artist_id are properly linked
+        const body = { ...req.body, user_id: user.id, artist_id: artistId }
 
         const { data, error } = await supabaseAdmin.from('artworks').insert([body]).select()
 
