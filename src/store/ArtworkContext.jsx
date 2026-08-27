@@ -123,15 +123,37 @@ export const ArtworksContextProvider = ({ children }) => {
           }))
         }
         if (user?.role == 'artist') {
+          console.log('[ArtworkContext] ARTIST DETECTED:', {
+            userName: user?.name,
+            userId: user?._id,
+            artistProfileId: artistProfile?.id,
+            hasArtistProfile: !!artistProfile?.id
+          })
+
           // ✅ CRITICAL: Always use artist_id, fallback to user_id if needed
           // This ensures we only fetch artworks belonging to THIS artist
-          const myArtworks = artistProfile?.id
+          const result = artistProfile?.id
             ? await getMyArtworks(artistProfile?.id)
             : await getOwnerArtworks(user?._id)  // Fallback: get by user_id via proper API
 
+          console.log('[ArtworkContext] ARTIST ARTWORKS FETCHED:', {
+            resultType: typeof result,
+            resultIsArray: Array.isArray(result),
+            resultLength: result?.length,
+            resultIsError: !!result?.error,
+            resultError: result?.error
+          })
+
+          const myArtworks = Array.isArray(result) ? result : (result?.error ? [] : [])
+
+          console.log('[ArtworkContext] FINAL ARTIST ARTWORKS:', {
+            count: myArtworks?.length,
+            titles: myArtworks?.slice(0, 3)?.map(a => a.title)
+          })
+
           setState((prev) => ({
             ...prev,
-            myArtworks: myArtworks?.length > 0 ? myArtworks : [],
+            myArtworks,
           }))
         }
 
