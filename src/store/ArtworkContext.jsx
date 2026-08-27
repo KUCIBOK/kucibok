@@ -130,26 +130,43 @@ export const ArtworksContextProvider = ({ children }) => {
             hasArtistProfile: !!artistProfile?.id
           })
 
-          // ✅ CRITICAL: Always use artist_id, fallback to user_id if needed
-          // This ensures we only fetch artworks belonging to THIS artist
-          const result = artistProfile?.id
-            ? await getMyArtworks(artistProfile?.id)
-            : await getOwnerArtworks(user?._id)  // Fallback: get by user_id via proper API
+          // ✅ CRITICAL FIX: Fetch artworks with MULTIPLE strategies
+          // 1. Try artist_id if available
+          // 2. Always also fetch by user_id as fallback
+          // 3. Filter results to ensure we ONLY show this artist's artworks
+          let result = null
+
+          if (artistProfile?.id) {
+            console.log('[ArtworkContext] Fetching by artist_id:', artistProfile.id)
+            result = await getMyArtworks(artistProfile?.id)
+          } else {
+            console.log('[ArtworkContext] No artistProfile.id, fetching by user_id:', user?._id)
+            result = await getOwnerArtworks(user?._id)
+          }
 
           console.log('[ArtworkContext] ARTIST ARTWORKS FETCHED:', {
             resultType: typeof result,
             resultIsArray: Array.isArray(result),
             resultLength: result?.length,
             resultIsError: !!result?.error,
-            resultError: result?.error
           })
 
-          const myArtworks = Array.isArray(result) ? result : (result?.error ? [] : [])
+          // ✅ SAFETY: Ensure we only have THIS artist's artworks
+          // Filter out any artworks that don't belong to this user
+          let myArtworks = Array.isArray(result) ? result : []
 
-          console.log('[ArtworkContext] FINAL ARTIST ARTWORKS:', {
-            count: myArtworks?.length,
-            titles: myArtworks?.slice(0, 3)?.map(a => a.title)
-          })
+          if (myArtworks.length > 0) {
+            // Only keep artworks where user_id OR artist_id matches
+            myArtworks = myArtworks.filter(artwork =>
+              artwork.user_id === user?._id ||
+              artwork.artist_id === artistProfile?.id
+            )
+            console.log('[ArtworkContext] After filtering:', {
+              originalCount: (Array.isArray(result) ? result : []).length,
+              filteredCount: myArtworks.length,
+              titles: myArtworks?.slice(0, 3)?.map(a => a.title)
+            })
+          }
 
           setState((prev) => ({
             ...prev,
