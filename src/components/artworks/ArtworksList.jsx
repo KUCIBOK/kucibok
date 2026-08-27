@@ -92,7 +92,9 @@ export const ArtworksList = ({ artworks, user }) => {
             header: 'Statut',
             accessor: 'status',
             render: (value) => (
-              <StatusBadge status={getStatusVariant(value)}>{getStatusLabel(value)}</StatusBadge>
+              // ✅ FIX: Pass the actual status, not the variant
+              // StatusBadge needs the real status ('approved', 'pending', 'sold', etc.)
+              <StatusBadge status={value} />
             ),
           },
         ]

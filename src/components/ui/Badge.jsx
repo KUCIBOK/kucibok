@@ -74,6 +74,7 @@ export function StatusBadge({ status, className = '' }) {
     error: { variant: 'danger', icon: AlertCircle, label: 'Erreur' },
     approved: { variant: 'success', icon: CheckCircle, label: 'Approuvé' },
     rejected: { variant: 'danger', icon: X, label: 'Rejeté' },
+    sold: { variant: 'default', icon: Info, label: 'Vendu' },
     draft: { variant: 'default', icon: Info, label: 'Brouillon' },
   }
 
