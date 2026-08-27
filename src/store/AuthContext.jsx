@@ -265,19 +265,20 @@ export function AuthContextProvider({ children }) {
   /** Met à jour le profil artiste. */
   const updateArtistCtx = useCallback(
     async (payload) => {
-      if (!user?._id) return { error: 'Utilisateur non connecté.' }
-      const profile = await updateArtist(user._id, payload)
-      if (profile?._id) {
+      if (!user?.id || !artistProfile?.id) return { error: 'Utilisateur non connecté.' }
+      // Pass artist.id (not user.id) to updateArtist
+      const profile = await updateArtist(artistProfile.id, payload)
+      if (profile?.id) {
         setArtistProfile(profile)
         await createLog({
           description: `L'utilisateur ${user.name} a mis son profil Artiste à jour`,
-          userId: user._id,
+          userId: user.id,
         }).catch(() => {})
         return profile
       }
       return { error: profile?.error || profile?.message }
     },
-    [user]
+    [user, artistProfile]
   )
 
   /** Met à jour le profil buyer / curator. */

@@ -1245,20 +1245,25 @@ export default async function handler(req, res) {
         const user = await getAuthUser()
         if (!user) return
 
-        // ✅ CRITICAL: Verify user can only modify their own artist profile
-        // The s1 is the user_id, check if the artist profile belongs to this user
+        // ✅ CRITICAL: Accept artist_id in URL, not user_id
+        // s1 is the artist.id (UUID from artists table)
+        const artistId = s1
+
+        // Fetch the artist profile to verify ownership
         const { data: artistCheck, error: checkError } = await supabaseAdmin
           .from('artists')
           .select('id, user_id')
-          .eq('user_id', s1)
+          .eq('id', artistId)
           .single()
 
         if (checkError || !artistCheck) {
+          console.log('[PUT /api/artist] Artist not found:', artistId, checkError?.message)
           return res.status(404).json({ error: 'Artist profile not found' })
         }
 
-        // ✅ Verify user owns this artist profile
+        // ✅ Verify authenticated user owns this artist profile
         if (artistCheck.user_id !== user.id) {
+          console.log('[PUT /api/artist] Unauthorized:', { artistUserId: artistCheck.user_id, authUserId: user.id })
           return res.status(403).json({ error: 'You can only modify your own artist profile' })
         }
 
@@ -1270,20 +1275,32 @@ export default async function handler(req, res) {
         delete body.email       // ← user field, not artist field
         delete body.telephone   // ← user field, not artist field
 
+        // Remove empty values to avoid overwriting with nulls
+        Object.keys(body).forEach(key => {
+          if (body[key] === null || body[key] === undefined || body[key] === '') {
+            delete body[key]
+          }
+        })
+
+        console.log('[PUT /api/artist] Updating artist:', { artistId, fields: Object.keys(body) })
+
         // Update artist profile
         const { data, error } = await supabaseAdmin
           .from('artists')
           .update(body)
-          .eq('id', artistCheck.id)
+          .eq('id', artistId)
           .select()
           .single()
 
         if (error) {
+          console.log('[PUT /api/artist] Update error:', error.message)
           return res.status(500).json({ error: error.message })
         }
 
+        console.log('[PUT /api/artist] Success')
         return res.status(200).json({ success: true, data })
       } catch (err) {
+        console.error('[PUT /api/artist] Exception:', err.message)
         return res.status(500).json({ error: err.message })
       }
     }

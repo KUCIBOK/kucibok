@@ -57,33 +57,17 @@ export const Profile = () => {
     e.preventDefault()
     try {
       setState({ ...state, loading: true })
-      const userPayload = {
-        name: state?.name,
-        email: state?.email,
-        telephone: state?.telephone,
-      }
-      const charge = { ...state }
-      // ✅ Remove fields that belong to users table, not artists table
-      delete charge.loading
-      delete charge.countries
-      delete charge.error
-      delete charge.show
-      delete charge.addresskeyShow
-      delete charge.name        // ← belongs to users table
-      delete charge.email       // ← belongs to users table
-      delete charge.telephone   // ← belongs to users table
 
-      const formData = new FormData()
-      Object.keys(charge).forEach((key) => {
-        formData.append(key, charge[key])
-      })
-
+      // ✅ Validation: Email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (state.email && !emailRegex.test(state.email)) {
         setState((prev) => ({ ...prev, loading: false, error: t.errors.invalidEmail }))
         return
       }
-      if (!state.biography || state.biography.length <= 20) {
+
+      // ✅ Validation: Biography minimum length (strip HTML tags for length check)
+      const bioText = state.biography?.replace(/<[^>]*>/g, '') || ''
+      if (!bioText || bioText.trim().length < 20) {
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -91,20 +75,50 @@ export const Profile = () => {
         }))
         return
       }
+
+      // Update user fields (name, email, phone)
+      const userPayload = {
+        name: state?.name,
+        email: state?.email,
+        telephone: state?.telephone,
+      }
       const updatedUser = await updateUser(userPayload)
-      const updatedArtist = await updateArtist(formData)
+
+      // Prepare artist fields for update
+      const artistFields = { ...state }
+      delete artistFields.loading
+      delete artistFields.countries
+      delete artistFields.error
+      delete artistFields.show
+      delete artistFields.addresskeyShow
+      // Remove user fields (only send artist-specific fields)
+      delete artistFields.name        // ← belongs to users table
+      delete artistFields.email       // ← belongs to users table
+      delete artistFields.telephone   // ← belongs to users table
+
+      const formData = new FormData()
+      Object.keys(artistFields).forEach((key) => {
+        if (artistFields[key] !== null && artistFields[key] !== undefined) {
+          formData.append(key, artistFields[key])
+        }
+      })
+
+      // Update artist profile (passes artistProfile.id, not user.id)
+      const updatedArtist = await updateArtist(artistProfile?.id, formData)
+
+      // Check if both updates succeeded
       if (
-        updatedUser?.id ||
-        updatedUser?._id ||
-        updatedArtist?.id ||
-        updatedArtist?._id ||
-        updatedArtist?.userId
+        (updatedUser?.id || updatedUser?._id) &&
+        (updatedArtist?.id || updatedArtist?._id || updatedArtist?.userId)
       ) {
         setState((prev) => ({ ...prev, loading: false, error: '' }))
         toast.success(t.successSaved)
+      } else if (updatedUser?.error) {
+        setState((prev) => ({ ...prev, loading: false, error: updatedUser.error }))
+      } else if (updatedArtist?.error) {
+        setState((prev) => ({ ...prev, loading: false, error: updatedArtist.error }))
       } else {
-        const msg = updatedArtist?.error || updatedUser?.error || t.errors.saveError
-        setState((prev) => ({ ...prev, loading: false, error: msg }))
+        setState((prev) => ({ ...prev, loading: false, error: t.errors.saveError }))
       }
     } catch (error) {
       setState((prev) => ({
