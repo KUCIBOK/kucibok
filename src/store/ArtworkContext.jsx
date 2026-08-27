@@ -123,13 +123,12 @@ export const ArtworksContextProvider = ({ children }) => {
           }))
         }
         if (user?.role == 'artist') {
-          // Use user_id as fallback in case artistProfile.id is not set correctly
-          // Both user_id and artist_id should exist in artworks table
-          const artworkQueryId = artistProfile?.id || user?._id
-          const myArtworks = await (artistProfile?.id
-            ? getMyArtworks(artistProfile?.id)
-            : fetchArtworks({ user_id: user?._id, status: 'approved', limit: 1000 })
-          )
+          // ✅ CRITICAL: Always use artist_id, fallback to user_id if needed
+          // This ensures we only fetch artworks belonging to THIS artist
+          const myArtworks = artistProfile?.id
+            ? await getMyArtworks(artistProfile?.id)
+            : await getOwnerArtworks(user?._id)  // Fallback: get by user_id via proper API
+
           setState((prev) => ({
             ...prev,
             myArtworks: myArtworks?.length > 0 ? myArtworks : [],
