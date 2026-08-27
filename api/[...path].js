@@ -159,25 +159,33 @@ export default async function handler(req, res) {
           limit = 300,
         } = req.query
 
-        let query = supabaseAdmin.from('artworks').select('*, artists(id, name)')
+        // ✅ CRITICAL FIX: Select WITHOUT relation first, apply filters, THEN add relation
+        // Reason: select('*, artists(id, name)') with filters causes Supabase to return 300 rows
+        // The LEFT JOIN doesn't properly respect the filters
 
         // ✅ FIX: Only apply default status='approved' filter if no artist_id or user_id is specified
         // When fetching artworks for a specific artist/user, return ALL artworks (not just approved)
         const hasOwnerFilter = artist_id || user_id
         const statusToApply = status || (hasOwnerFilter ? null : 'approved')
 
-        // DEBUG: Log the filters to verify they're applied
-        console.log('[Artworks Filter] artist_id:', artist_id, 'user_id:', user_id, 'status:', statusToApply)
+        console.log('[Artworks Filter] INPUT:', {artist_id, user_id, status: statusToApply, for_sale, category, limit})
 
+        // Start with simple select (no relations yet)
+        let query = supabaseAdmin.from('artworks').select('*')
+
+        // Apply ALL filters FIRST
         if (statusToApply) query = query.eq('status', statusToApply)
         if (for_sale === 'true') query = query.eq('for_sale', true)
         if (artist_id) query = query.eq('artist_id', artist_id)
         if (user_id) query = query.eq('user_id', user_id)
         if (category) query = query.eq('category', category)
 
+        // Order and limit
         query = query.order('created_at', { ascending: false }).limit(parseInt(limit))
 
-        const { data, error } = await query
+        const { data: filteredArtworks, error } = await query
+
+        console.log('[Artworks Filter] OUTPUT:', filteredArtworks?.length, 'artworks returned')
 
         if (error) {
           return res.status(500).json({
@@ -187,10 +195,25 @@ export default async function handler(req, res) {
           })
         }
 
+        // NOW fetch artist data for the filtered artworks
+        const artworkIds = (filteredArtworks || []).map(a => a.artist_id).filter(Boolean)
+        let artistData = {}
+
+        if (artworkIds.length > 0) {
+          const { data: artists } = await supabaseAdmin
+            .from('artists')
+            .select('id, name')
+            .in('id', artworkIds)
+
+          artists?.forEach(a => {
+            artistData[a.id] = a
+          })
+        }
+
         // Map artist data: add 'artist' field with artist name
-        const artworksWithArtistNames = (data || []).map((artwork) => ({
+        const artworksWithArtistNames = (filteredArtworks || []).map((artwork) => ({
           ...artwork,
-          artist: artwork.artists?.name || artwork.artist || 'Unknown artist',
+          artist: artistData[artwork.artist_id]?.name || artwork.artist || 'Unknown artist',
         }))
 
         return res.status(200).json({
