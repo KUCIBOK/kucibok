@@ -30,7 +30,7 @@ const { api } = utils
  * @param {Record<string, string|number|boolean>} params
  * @returns {Promise<object>} { data: [], pagination: {} } ou { error }
  */
-async function fetchArtworks(params = {}) {
+export async function fetchArtworks(params = {}) {
   try {
     const qs = new URLSearchParams(params).toString()
     const response = await fetchWithTimeout(`${api}/artworks${qs ? `?${qs}` : ''}`, {

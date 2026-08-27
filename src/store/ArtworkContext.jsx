@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import {
+  fetchArtworks,
   getAllArtworks,
   getApprovedArtworks,
   getForSaleArtworks,
