@@ -159,22 +159,22 @@ export default async function handler(req, res) {
           limit = 300,
         } = req.query
 
-        let query = supabaseAdmin.from('artworks').select('*, artists(id, name)')
+        let query = supabaseAdmin.from('artworks')
 
         // ✅ FIX: Only apply default status='approved' filter if no artist_id or user_id is specified
         // When fetching artworks for a specific artist/user, return ALL artworks (not just approved)
         const hasOwnerFilter = artist_id || user_id
         const statusToApply = status || (hasOwnerFilter ? null : 'approved')
 
-        // DEBUG: Log the filters to verify they're applied
-        console.log('[Artworks Filter] artist_id:', artist_id, 'user_id:', user_id, 'status:', statusToApply)
-
+        // Apply filters BEFORE select to ensure proper filtering
         if (statusToApply) query = query.eq('status', statusToApply)
         if (for_sale === 'true') query = query.eq('for_sale', true)
         if (artist_id) query = query.eq('artist_id', artist_id)
         if (user_id) query = query.eq('user_id', user_id)
         if (category) query = query.eq('category', category)
 
+        // Apply select AFTER filters
+        query = query.select('*, artists(id, name)')
         query = query.order('created_at', { ascending: false }).limit(parseInt(limit))
 
         const { data, error } = await query
