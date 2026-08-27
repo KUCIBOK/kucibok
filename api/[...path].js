@@ -164,7 +164,9 @@ export default async function handler(req, res) {
         // The LEFT JOIN doesn't properly respect the filters
 
         // ✅ FIX: Only apply default status='approved' filter if no artist_id or user_id is specified
-        // When fetching artworks for a specific artist/user, return ALL artworks (not just approved)
+        // - If fetching for PUBLIC (no artist_id/user_id): Only show 'approved' artworks
+        // - If fetching for the OWNER (artist_id or user_id): Return ALL artworks (they own them)
+        // - If fetching for ADMIN: Can see pending, rejected, etc
         const hasOwnerFilter = artist_id || user_id
         const statusToApply = status || (hasOwnerFilter ? null : 'approved')
 

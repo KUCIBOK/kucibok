@@ -270,9 +270,11 @@ export const ArtworksContextProvider = ({ children }) => {
         try {
           const data = await submitArtwork(artwork)
           if (data?.id) {
+            // ✅ FIX: Use the status returned by the API, don't force 'pending'
+            // The backend decides the initial status based on configuration
             setState((prev) => ({
               ...prev,
-              myArtworks: [...prev.myArtworks, { ...data, status: 'pending' }],
+              myArtworks: [...prev.myArtworks, data],
             }))
             makeToast('Félicitations ', 'success', `L'oeuvre a été soumise avec succès`)
             await createLog({
