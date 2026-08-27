@@ -166,6 +166,9 @@ export default async function handler(req, res) {
         const hasOwnerFilter = artist_id || user_id
         const statusToApply = status || (hasOwnerFilter ? null : 'approved')
 
+        // DEBUG: Log the filters to verify they're applied
+        console.log('[Artworks Filter] artist_id:', artist_id, 'user_id:', user_id, 'status:', statusToApply)
+
         if (statusToApply) query = query.eq('status', statusToApply)
         if (for_sale === 'true') query = query.eq('for_sale', true)
         if (artist_id) query = query.eq('artist_id', artist_id)
