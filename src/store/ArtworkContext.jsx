@@ -49,54 +49,31 @@ export const ArtworksContextProvider = ({ children }) => {
   const [state, setState] = useState(initialState)
   const { user, artistProfile, curatorProfile } = useAuth()
   const { makeToast } = useToast()
+  // ✅ FIX: Load public artworks (don't block dashboard loading)
   useEffect(() => {
-    const getforSaleArtworks = async () => {
+    const loadPublicArtworks = async () => {
       try {
-        const forSale = await getForSaleArtworks()
-        if (forSale?.length > 0) {
-          shuffleArray(forSale)
-          setState((prev) => ({
-            ...prev,
-            forSale: forSale?.filter(
-              (item) => item?.status === 'approved' && item?.for_sale && !item?.sold
-            ),
-          }))
-        }
+        // Load public artworks in parallel
+        const [forSale, featured, categoryFeatured] = await Promise.all([
+          getForSaleArtworks(),
+          getRandomArtworks(),
+          getRandomArtworksByCategories('sculpture'),
+        ])
+
+        setState((prev) => ({
+          ...prev,
+          forSale: (Array.isArray(forSale) ? forSale : []).filter(
+            (item) => item?.status === 'approved' && item?.for_sale && !item?.sold
+          ),
+          featured: Array.isArray(featured) ? featured : [],
+          categoryFeatured: Array.isArray(categoryFeatured) ? categoryFeatured : [],
+        }))
       } catch (error) {
-        makeToast('Erreur', 'danger', error.message)
-      }
-    }
-    const getArtworks = async () => {
-      try {
-        const featured = await getRandomArtworks()
-        if (featured?.length > 0) {
-          setState((prev) => ({
-            ...prev,
-            featured: featured || [],
-          }))
-        }
-      } catch (error) {
-        // silent
+        console.warn('[ArtworkContext] Error loading public artworks:', error.message)
       }
     }
 
-    const getCategoryFeatured = async () => {
-      try {
-        const categoryFeatured = await getRandomArtworksByCategories('sculpture')
-        if (categoryFeatured?.length > 0) {
-          setState((prev) => ({
-            ...prev,
-            categoryFeatured: categoryFeatured,
-          }))
-        }
-      } catch (error) {
-        // silent
-      }
-    }
-
-    Promise.allSettled([getforSaleArtworks(), getArtworks(), getCategoryFeatured()]).finally(() => {
-      setState((prev) => ({ ...prev, loading: false }))
-    })
+    loadPublicArtworks()
   }, [])
 
   useEffect(() => {
@@ -213,9 +190,16 @@ export const ArtworksContextProvider = ({ children }) => {
           }))
         }
       }
-      getProfileArtworks()
+
+      // ✅ FIX: Keep loading TRUE until profile artworks are loaded
+      getProfileArtworks().finally(() => {
+        setState((prev) => ({ ...prev, loading: false }))
+      })
+    } else {
+      // No user, stop loading
+      setState((prev) => ({ ...prev, loading: false }))
     }
-  }, [user?._id, user?.role, artistProfile?.id, curatorProfile?._id])
+  }, [user?.id, user?.role, artistProfile?.id, curatorProfile?.id])
   const contextValue = useMemo(
     () => ({
       artworks: state.artworks,
