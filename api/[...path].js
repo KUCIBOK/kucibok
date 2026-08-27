@@ -1235,10 +1235,13 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: 'You can only modify your own artist profile' })
         }
 
-        // ✅ CRITICAL: Prevent privilege escalation (cannot change user_id)
+        // ✅ CRITICAL: Prevent privilege escalation (cannot change user_id or user fields)
         const body = { ...req.body }
         delete body.user_id
         delete body.id
+        delete body.name        // ← user field, not artist field
+        delete body.email       // ← user field, not artist field
+        delete body.telephone   // ← user field, not artist field
 
         // Update artist profile
         const { data, error } = await supabaseAdmin
