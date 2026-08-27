@@ -155,13 +155,35 @@ export const ArtworksContextProvider = ({ children }) => {
           // Filter out any artworks that don't belong to this user
           let myArtworks = Array.isArray(result) ? result : []
 
+          console.log('[ArtworkContext] BEFORE FILTER:', {
+            count: myArtworks.length,
+            userIdToMatch: user?._id,
+            artistIdToMatch: artistProfile?.id,
+            sampleArtworks: myArtworks.slice(0, 3).map(a => ({
+              id: a.id,
+              title: a.title,
+              user_id: a.user_id,
+              artist_id: a.artist_id
+            }))
+          })
+
           if (myArtworks.length > 0) {
             // Only keep artworks where user_id OR artist_id matches
-            myArtworks = myArtworks.filter(artwork =>
-              artwork.user_id === user?._id ||
-              artwork.artist_id === artistProfile?.id
-            )
-            console.log('[ArtworkContext] After filtering:', {
+            myArtworks = myArtworks.filter(artwork => {
+              const matches = artwork.user_id === user?._id || artwork.artist_id === artistProfile?.id
+              if (!matches && myArtworks.length < 50) {
+                // Log first few non-matches to debug
+                console.log('[ArtworkContext] Filtered OUT:', artwork.title, {
+                  user_id: artwork.user_id,
+                  artist_id: artwork.artist_id,
+                  userIdMatch: artwork.user_id === user?._id,
+                  artistIdMatch: artwork.artist_id === artistProfile?.id
+                })
+              }
+              return matches
+            })
+
+            console.log('[ArtworkContext] AFTER FILTER:', {
               originalCount: (Array.isArray(result) ? result : []).length,
               filteredCount: myArtworks.length,
               titles: myArtworks?.slice(0, 3)?.map(a => a.title)
