@@ -42,7 +42,7 @@ import { RewardsHub } from '../../components/artist/RewardsHub'
 export default function Artist() {
   const { user, artistProfile, loading } = useAuth()
   const [toggle, setToggle] = useState(false)
-  const { myArtworks } = useArtworks()
+  const { myArtworks, loading: artworksLoading } = useArtworks()
   const [tab, setTab] = useState(0)
   const { lang } = useLang()
   const td = uiT[lang].dashboards.artist
@@ -106,6 +106,17 @@ export default function Artist() {
       case 0:
         return <Synthesis setTab={setTab} />
       case 1:
+        // ✅ Show loading state while artworks are being fetched
+        if (artworksLoading && (!myArtworks || myArtworks.length === 0)) {
+          return (
+            <div className="flex items-center justify-center py-16">
+              <div className="text-center">
+                <div className="w-8 h-8 border-2 border-kcb-or border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-kcb-pierre">Chargement de vos œuvres...</p>
+              </div>
+            </div>
+          )
+        }
         return (
           <ArtworksList
             user={user}
