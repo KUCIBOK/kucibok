@@ -171,9 +171,10 @@ export default async function handler(req, res) {
           limit = 300,
         } = req.query
 
-        // ✅ CRITICAL FIX: Select WITHOUT relation first, apply filters, THEN add relation
-        // Reason: select('*, artists(id, name)') with filters causes Supabase to return 300 rows
-        // The LEFT JOIN doesn't properly respect the filters
+        // ✅ CRITICAL FIX: Build query with filters first, THEN select with relations
+        // Reason: Supabase JS loads .select() result in memory first, making filters ineffective
+        // We must chain: from() → filters → select() → order() → limit()
+        let query = supabaseAdmin.from('artworks')
 
         // ✅ FIX: Only apply default status='approved' filter if no artist_id or user_id is specified
         // - If fetching for PUBLIC (no artist_id/user_id): Only show 'approved' artworks
@@ -182,24 +183,17 @@ export default async function handler(req, res) {
         const hasOwnerFilter = artist_id || user_id
         const statusToApply = status || (hasOwnerFilter ? null : 'approved')
 
-        console.log('[Artworks Filter] INPUT:', {artist_id, user_id, status: statusToApply, for_sale, category, limit})
-
-        // Start with simple select (no relations yet)
-        let query = supabaseAdmin.from('artworks').select('*')
-
-        // Apply ALL filters FIRST
+        // Apply all filters FIRST (before select with relations)
         if (statusToApply) query = query.eq('status', statusToApply)
         if (for_sale === 'true') query = query.eq('for_sale', true)
         if (artist_id) query = query.eq('artist_id', artist_id)
         if (user_id) query = query.eq('user_id', user_id)
         if (category) query = query.eq('category', category)
 
-        // Order and limit
-        query = query.order('created_at', { ascending: false }).limit(parseInt(limit))
+        // NOW select with relations, order, and limit AFTER all filters
+        query = query.select('*, artists(id, name)').order('created_at', { ascending: false }).limit(parseInt(limit))
 
         const { data: filteredArtworks, error } = await query
-
-        console.log('[Artworks Filter] OUTPUT:', filteredArtworks?.length, 'artworks returned')
 
         if (error) {
           return res.status(500).json({

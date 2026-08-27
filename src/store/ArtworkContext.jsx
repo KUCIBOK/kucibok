@@ -77,6 +77,7 @@ export const ArtworksContextProvider = ({ children }) => {
   }, [])
 
   useEffect(() => {
+    console.log('[ArtworkContext] useEffect triggered - user:', user?._id, 'role:', user?.role, 'artistProfile?.id:', artistProfile?.id)
     if (user?._id) {
       const getProfileArtworks = async () => {
         if (user?.role == 'admin') {
@@ -99,105 +100,42 @@ export const ArtworksContextProvider = ({ children }) => {
             rejected: Array.isArray(rejected) ? [...rejected].reverse() : [],
           }))
         }
-        if (user?.role == 'artist') {
-          console.log('[ArtworkContext] ARTIST DETECTED:', {
-            userName: user?.name,
-            userId: user?._id,
-            artistProfileId: artistProfile?.id,
-            hasArtistProfile: !!artistProfile?.id
-          })
-
-          // ✅ CRITICAL FIX: Fetch artworks with MULTIPLE strategies
-          // 1. Try artist_id if available
-          // 2. Always also fetch by user_id as fallback
-          // 3. Filter results to ensure we ONLY show this artist's artworks
-          let result = null
-
-          if (artistProfile?.id) {
-            console.log('[ArtworkContext] Fetching by artist_id:', artistProfile.id)
-            result = await getMyArtworks(artistProfile?.id)
-          } else {
-            console.log('[ArtworkContext] No artistProfile.id, fetching by user_id:', user?._id)
-            result = await getOwnerArtworks(user?._id)
-          }
-
-          console.log('[ArtworkContext] ARTIST ARTWORKS FETCHED:', {
-            resultType: typeof result,
-            resultIsArray: Array.isArray(result),
-            resultLength: result?.length,
-            resultIsError: !!result?.error,
-          })
-
-          // ✅ SAFETY: Ensure we only have THIS artist's artworks
-          // Filter out any artworks that don't belong to this user
-          let myArtworks = Array.isArray(result) ? result : []
-
-          console.log('[ArtworkContext] BEFORE FILTER:', {
-            count: myArtworks.length,
-            userIdToMatch: user?._id,
-            artistIdToMatch: artistProfile?.id,
-            sampleArtworks: myArtworks.slice(0, 3).map(a => ({
-              id: a.id,
-              title: a.title,
-              user_id: a.user_id,
-              artist_id: a.artist_id
-            }))
-          })
-
-          if (myArtworks.length > 0) {
-            // Only keep artworks where user_id OR artist_id matches
-            myArtworks = myArtworks.filter(artwork => {
-              const matches = artwork.user_id === user?._id || artwork.artist_id === artistProfile?.id
-              if (!matches && myArtworks.length < 50) {
-                // Log first few non-matches to debug
-                console.log('[ArtworkContext] Filtered OUT:', artwork.title, {
-                  user_id: artwork.user_id,
-                  artist_id: artwork.artist_id,
-                  userIdMatch: artwork.user_id === user?._id,
-                  artistIdMatch: artwork.artist_id === artistProfile?.id
-                })
-              }
-              return matches
-            })
-
-            console.log('[ArtworkContext] AFTER FILTER:', {
-              originalCount: (Array.isArray(result) ? result : []).length,
-              filteredCount: myArtworks.length,
-              titles: myArtworks?.slice(0, 3)?.map(a => a.title)
-            })
-          }
-
+        // ✅ ARTIST: Fetch only their own artworks (by artist_id)
+        if (user?.role == 'artist' && artistProfile?.id) {
+          const result = await getMyArtworks(artistProfile?.id)
+          const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
           setState((prev) => ({
             ...prev,
             myArtworks,
           }))
         }
 
+        // ✅ BUYER: Fetch their purchases
         if (user?.role == 'buyer') {
-          const buyed = await getOwnerArtworks(user?._id)
-          const myArtworks = await getManagedArtworks()
+          const buyedResult = await getOwnerArtworks(user?._id)
+          const managedResult = await getManagedArtworks()
+          const buyed = buyedResult?.error ? [] : (Array.isArray(buyedResult) ? buyedResult : [])
+          const myArtworks = managedResult?.error ? [] : (Array.isArray(managedResult) ? managedResult : [])
           setState((prev) => ({
             ...prev,
-            buyed: buyed?.length > 0 ? buyed?.reverse() : [],
-            myArtworks: myArtworks?.length > 0 ? myArtworks?.reverse() : [],
+            buyed: buyed?.length > 0 ? [...buyed].reverse() : [],
+            myArtworks: myArtworks?.length > 0 ? [...myArtworks].reverse() : [],
           }))
         }
+
+        // ✅ CURATOR: Fetch managed artworks
         if (user?.role == 'curator') {
-          const myArtworks = await getManagedArtworks()
+          const result = await getManagedArtworks()
+          const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
           setState((prev) => ({
             ...prev,
-            myArtworks: myArtworks?.length > 0 ? myArtworks?.reverse() : [],
+            myArtworks: myArtworks?.length > 0 ? [...myArtworks].reverse() : [],
           }))
         }
       }
-
-      // ✅ FIX: Keep loading TRUE until profile artworks are loaded
-      getProfileArtworks().finally(() => {
-        setState((prev) => ({ ...prev, loading: false }))
-      })
-    } else {
-      // No user, stop loading
-      setState((prev) => ({ ...prev, loading: false }))
+      // ✅ CRITICAL: Always await the profile artworks load
+      // This prevents rendering the dashboard before myArtworks is loaded
+      getProfileArtworks()
     }
   }, [user?.id, user?.role, artistProfile?.id, curatorProfile?.id])
   const contextValue = useMemo(
