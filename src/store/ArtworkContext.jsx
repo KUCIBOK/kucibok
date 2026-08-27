@@ -99,6 +99,7 @@ export const ArtworksContextProvider = ({ children }) => {
   }, [])
 
   useEffect(() => {
+    console.log('[ArtworkContext] useEffect triggered - user:', user?._id, 'role:', user?.role, 'artistProfile?.id:', artistProfile?.id)
     if (user?._id) {
       const getProfileArtworks = async () => {
         if (user?.role == 'admin') {
@@ -123,8 +124,11 @@ export const ArtworksContextProvider = ({ children }) => {
         }
         // ✅ ARTIST: Fetch only their own artworks (by artist_id)
         if (user?.role == 'artist' && artistProfile?.id) {
+          console.log('[ArtworkContext] Artist detected:', user.name, 'artist_id:', artistProfile?.id)
           const result = await getMyArtworks(artistProfile?.id)
+          console.log('[ArtworkContext] getMyArtworks returned:', result?.length, 'items or error:', result?.error)
           const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
+          console.log('[ArtworkContext] Final myArtworks:', myArtworks?.length, 'items')
           setState((prev) => ({
             ...prev,
             myArtworks,
