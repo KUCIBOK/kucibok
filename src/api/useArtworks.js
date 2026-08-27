@@ -34,14 +34,12 @@ export async function fetchArtworks(params = {}) {
   try {
     const qs = new URLSearchParams(params).toString()
     const url = `${api}/artworks${qs ? `?${qs}` : ''}`
-    console.log('[fetchArtworks] URL:', url) // DEBUG
     const response = await fetchWithTimeout(url, {
       ...utils.options,
     })
     const body = await response.json()
     if (!response.ok) return { error: body?.error || 'Erreur serveur' }
     // Extrait correctement le tableau d'artworks de la réponse
-    console.log('[fetchArtworks] Returned count:', body?.count || body?.artworks?.length || body?.length) // DEBUG
     return Array.isArray(body) ? body : (body?.artworks ?? body?.data ?? [])
   } catch (err) {
     return { error: err.message }
@@ -236,8 +234,21 @@ export async function submitArtwork(data) {
     const userId = sessionData.session?.user?.id
 
     const fields = {}
-    for (const [key, value] of data.entries()) fields[key] = value
+    let imageFile = null
 
+    // ✅ FIX: Iterate FormData and convert values back to proper types
+    for (const [key, value] of data.entries()) {
+      if (value instanceof File) {
+        imageFile = value
+      } else {
+        if (value === 'true') fields[key] = true
+        else if (value === 'false') fields[key] = false
+        else if (!isNaN(value) && value !== '') fields[key] = parseFloat(value)
+        else fields[key] = value
+      }
+    }
+
+    // ✅ FIX: Map camelCase to snake_case
     if ('forSale' in fields) {
       fields.for_sale = fields.forSale
       delete fields.forSale
@@ -247,8 +258,9 @@ export async function submitArtwork(data) {
       delete fields.availabilityStatus
     }
 
-    if (fields.image instanceof File && userId) {
-      const upload = await uploadArtworkImage(userId, fields.image)
+    // ✅ FIX: Upload image BEFORE sending JSON (if present)
+    if (imageFile && userId) {
+      const upload = await uploadArtworkImage(userId, imageFile)
       if (upload.error) return { error: upload.error }
       fields.image = upload.url
     }
@@ -281,21 +293,35 @@ export async function submitArtwork(data) {
 export async function updateArtwork(id, payload) {
   try {
     const { supabase } = await import('../lib/supabase')
-    const { uploadArtworkImage, uploadFile } = await import('../lib/storage')
+    const { uploadFile } = await import('../lib/storage')
     const { data: sessionData } = await supabase.auth.getSession()
     const token = sessionData.session?.access_token ?? ''
     const userId = sessionData.session?.user?.id
 
     const fields = {}
-    for (const [key, value] of payload.entries()) fields[key] = value
+    let imageFile = null
 
-    if (fields.image instanceof File && userId) {
-      // Utilise un path stable basé sur l'id de l'œuvre pour écraser l'ancienne image
-      const ext = fields.image.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+    // ✅ FIX: Iterate FormData and convert values back to proper types
+    // FormData converts everything to strings, so we need to parse them back
+    for (const [key, value] of payload.entries()) {
+      if (value instanceof File) {
+        imageFile = value
+      } else {
+        // Try to parse back to original types
+        if (value === 'true') fields[key] = true
+        else if (value === 'false') fields[key] = false
+        else if (!isNaN(value) && value !== '') fields[key] = parseFloat(value)
+        else fields[key] = value
+      }
+    }
+
+    // ✅ FIX: Upload image BEFORE sending JSON (if present)
+    if (imageFile && userId) {
+      const ext = imageFile.name.split('.').pop()?.toLowerCase() ?? 'jpg'
       const upload = await uploadFile({
         bucket: 'artworks',
         path: `${userId}/${id}.${ext}`,
-        file: fields.image,
+        file: imageFile,
       })
       if (upload.error) return { error: upload.error }
       fields.image = upload.url

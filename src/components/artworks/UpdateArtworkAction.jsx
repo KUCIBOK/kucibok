@@ -44,15 +44,39 @@ function UpdateArtworkModal({ artwork, closeModal }) {
     e.preventDefault()
     try {
       setState({ ...state, loading: true })
-      let charge = { ...state }
-      delete charge.loading
-      delete charge.error
-      delete charge.show
-      delete charge.modal
+
+      // ✅ FIX: Only include editable fields (avoid sending system/non-editable fields)
+      // Map camelCase to snake_case for DB column names
+      const FIELD_MAPPING = {
+        title: 'title',
+        description: 'description',
+        price: 'price',
+        status: 'status',
+        category: 'category',
+        image: 'image',
+        provenance: 'provenance',
+        materials: 'materials',
+        dimensions: 'dimensions',
+        year: 'year',
+        condition: 'condition',
+        height: 'height',
+        width: 'width',
+        weight: 'weight',
+        forSale: 'for_sale', // ← camelCase to snake_case
+      }
+
+      const charge = {}
+      Object.entries(FIELD_MAPPING).forEach(([jsKey, dbKey]) => {
+        if (jsKey in state && state[jsKey] !== undefined && state[jsKey] !== null) {
+          charge[dbKey] = state[jsKey]
+        }
+      })
+
       const formData = new FormData()
       Object.keys(charge).forEach((key) => {
         formData.append(key, charge[key])
       })
+
       const updated = await updateArtwork(artwork?.id, formData)
       if (updated?.id) {
         toast.success('✓ Œuvre mise à jour')

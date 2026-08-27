@@ -85,7 +85,8 @@ export function AuthContextProvider({ children }) {
     if (!kcbUser?._id) return
     try {
       const profileData = await getUserProfile(kcbUser._id)
-      if (!profileData?._id && !profileData?.userId) return
+      // ✅ FIX: Check for `id` field (Supabase), not just `_id` or `userId`
+      if (!profileData?.id && !profileData?._id && !profileData?.userId) return
       const key = profileKeyForRole(kcbUser.role)
       if (key === 'artistProfile') setArtistProfile(profileData)
       else if (key === 'buyerProfile') setBuyerProfile(profileData)
@@ -264,10 +265,24 @@ export function AuthContextProvider({ children }) {
 
   /** Met à jour le profil artiste. */
   const updateArtistCtx = useCallback(
-    async (payload) => {
+    async (idOrPayload, payload) => {
       if (!user?.id || !artistProfile?.id) return { error: 'Utilisateur non connecté.' }
-      // Pass artist.id (not user.id) to updateArtist
-      const profile = await updateArtist(artistProfile.id, payload)
+
+      // ✅ FIX: Handle both calling conventions
+      // Called as updateArtist(artistProfile.id, formData) from Profile.jsx
+      // Or as updateArtist(formData) from other places
+      let artistId = artistProfile.id
+      let dataPayload = payload
+
+      if (payload === undefined) {
+        // Called with single argument: updateArtist(formData)
+        dataPayload = idOrPayload
+      } else {
+        // Called with two arguments: updateArtist(id, formData)
+        artistId = idOrPayload
+      }
+
+      const profile = await updateArtist(artistId, dataPayload)
       if (profile?.id) {
         setArtistProfile(profile)
         await createLog({

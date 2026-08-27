@@ -76,13 +76,16 @@ export default async function handler(req, res) {
     const s2 = path[2] // Third segment
 
     // ✅ DEBUG: Log all requests
-    console.log('[API Request]', {
-      method: req.method,
-      pathname: urlObj.pathname,
-      s0,
-      s1,
-      s2,
-    })
+    if (req.method !== 'GET' || s0 === 'artist' || s0 === 'profile') {
+      console.log('[API Request]', {
+        method: req.method,
+        pathname: urlObj.pathname,
+        path_segments: path,
+        s0,
+        s1,
+        s2,
+      })
+    }
 
     // ✅ Helper function: Validate email
     const validateEmail = (email) => {
@@ -330,9 +333,14 @@ export default async function handler(req, res) {
         const user = await getAuthUser()
         if (!user) return
 
+        // ✅ DEBUG: Log incoming payload
+        console.log('[PUT /api/artworks/:id] Incoming body keys:', Object.keys(req.body))
+        console.log('[PUT /api/artworks/:id] Incoming body size:', JSON.stringify(req.body).length, 'bytes')
+
         // ✅ CRITICAL: Validate input
         const validationErrors = validateArtwork(req.body)
         if (validationErrors.length > 0) {
+          console.log('[PUT /api/artworks/:id] Validation failed:', validationErrors)
           return res.status(400).json({ error: 'Validation failed', errors: validationErrors })
         }
 
@@ -1146,20 +1154,33 @@ export default async function handler(req, res) {
 
         // If user is artist, return artist profile (with artist.id for artwork queries)
         if (userData?.role === 'artist') {
-          const { data: artistData, error: artistError } = await supabaseAdmin
+          let { data: artistData, error: artistError } = await supabaseAdmin
             .from('artists')
             .select('*')
             .eq('user_id', s1)
             .single()
 
+          // ✅ FIX: Auto-create artist profile if it doesn't exist
           if (artistError || !artistData) {
-            // Fallback to users table if artist profile not found
-            const { data: fallbackData } = await supabaseAdmin
-              .from('users')
-              .select('*')
-              .eq('id', s1)
+            console.log('[GET /api/profile] Artist profile not found, creating one for user:', s1)
+            const { data: newArtist, error: createError } = await supabaseAdmin
+              .from('artists')
+              .insert([{ user_id: s1 }])
+              .select()
               .single()
-            return res.status(200).json({ success: true, data: fallbackData })
+
+            if (createError || !newArtist) {
+              console.log('[GET /api/profile] Failed to create artist profile:', createError?.message)
+              // Fallback to users table if artist creation fails
+              const { data: fallbackData } = await supabaseAdmin
+                .from('users')
+                .select('*')
+                .eq('id', s1)
+                .single()
+              return res.status(200).json({ success: true, data: fallbackData })
+            }
+
+            artistData = newArtist
           }
 
           return res.status(200).json({ success: true, data: artistData })
@@ -1252,9 +1273,14 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'artist' && s1 && req.method === 'PUT') {
       try {
+        console.log('[PUT /api/artist] Route matched! s0=artist, s1=', s1)
+
         // ✅ CRITICAL: Require authentication
         const user = await getAuthUser()
-        if (!user) return
+        if (!user) {
+          console.log('[PUT /api/artist] Auth failed')
+          return
+        }
 
         // ✅ CRITICAL: Accept artist_id in URL, not user_id
         // s1 is the artist.id (UUID from artists table)

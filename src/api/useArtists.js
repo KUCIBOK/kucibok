@@ -129,15 +129,24 @@ export async function createArtist(payload) {
     const { data: sessionData } = await supabase.auth.getSession()
     const userId = sessionData.session?.user?.id
 
-    // Extraire les champs du FormData
     const fields = {}
+    let imageFile = null
+
+    // ✅ FIX: Iterate FormData and convert values back to proper types
     for (const [key, value] of payload.entries()) {
-      fields[key] = value
+      if (value instanceof File) {
+        imageFile = value
+      } else {
+        if (value === 'true') fields[key] = true
+        else if (value === 'false') fields[key] = false
+        else if (!isNaN(value) && value !== '') fields[key] = parseFloat(value)
+        else fields[key] = value
+      }
     }
 
-    // Upload image si présente
-    if (fields.image instanceof File && userId) {
-      const uploadResult = await uploadProfileImage(userId, fields.image)
+    // ✅ FIX: Upload image BEFORE sending JSON (if present)
+    if (imageFile && userId) {
+      const uploadResult = await uploadProfileImage(userId, imageFile)
       if (uploadResult.error) return { error: uploadResult.error }
       fields.image = uploadResult.url
     }
@@ -166,15 +175,26 @@ export async function createArtist(payload) {
  */
 export async function updateArtist(id, payload) {
   try {
-    // Extraire les champs du FormData
     const fields = {}
+    let imageFile = null
+
+    // ✅ FIX: Iterate FormData and convert values back to proper types
+    // FormData converts everything to strings, so we need to parse them back
     for (const [key, value] of payload.entries()) {
-      fields[key] = value
+      if (value instanceof File) {
+        imageFile = value
+      } else {
+        // Try to parse back to original types
+        if (value === 'true') fields[key] = true
+        else if (value === 'false') fields[key] = false
+        else if (!isNaN(value) && value !== '') fields[key] = parseFloat(value)
+        else fields[key] = value
+      }
     }
 
-    // Upload image si c'est un File
-    if (fields.image instanceof File) {
-      const uploadResult = await uploadProfileImage(id, fields.image)
+    // ✅ FIX: Upload image BEFORE sending JSON (if present)
+    if (imageFile) {
+      const uploadResult = await uploadProfileImage(id, imageFile)
       if (uploadResult.error) return { error: uploadResult.error }
       fields.image = uploadResult.url
     }

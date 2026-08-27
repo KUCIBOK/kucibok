@@ -82,7 +82,8 @@ export const Profile = () => {
         email: state?.email,
         telephone: state?.telephone,
       }
-      const updatedUser = await updateUser(userPayload)
+      // ✅ FIX: Pass user.id as first parameter
+      const updatedUser = await updateUser(user.id, userPayload)
 
       // Prepare artist fields for update
       const artistFields = { ...state }

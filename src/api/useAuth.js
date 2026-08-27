@@ -89,13 +89,11 @@ export async function SignUpUser(charge) {
         },
         body: JSON.stringify({ user_id: userId }),
       })
-      const trialBody = await trialRes.json()
+      await trialRes.json()
       if (!trialRes.ok) {
-        console.warn('[Trial Creation Warning]', trialBody?.error)
         // Non-blocking: Continue even if trial creation fails
       }
-    } catch (trialErr) {
-      console.warn('[Trial Creation Error]', trialErr.message)
+    } catch (_trialErr) {
       // Non-blocking: Continue signup even if trial API fails
     }
 
@@ -283,19 +281,28 @@ export async function updateUser(id, payload) {
  */
 export async function updateProfile(id, payload) {
   try {
-    // Extraire les champs du FormData ou d'un objet plain
     const fields = {}
+    let imageFile = null
+
+    // ✅ FIX: Handle both FormData and plain objects, convert types back
     if (payload instanceof FormData) {
       for (const [key, value] of payload.entries()) {
-        fields[key] = value
+        if (value instanceof File) {
+          imageFile = value
+        } else {
+          if (value === 'true') fields[key] = true
+          else if (value === 'false') fields[key] = false
+          else if (!isNaN(value) && value !== '') fields[key] = parseFloat(value)
+          else fields[key] = value
+        }
       }
     } else {
       Object.assign(fields, payload)
     }
 
-    // Si une image File est présente, l'uploader vers Supabase Storage
-    if (fields.image instanceof File) {
-      const uploadResult = await uploadProfileImage(id, fields.image)
+    // ✅ FIX: Upload image BEFORE sending JSON (if present)
+    if (imageFile) {
+      const uploadResult = await uploadProfileImage(id, imageFile)
       if (uploadResult.error) return { error: uploadResult.error }
       fields.image = uploadResult.url
     }
