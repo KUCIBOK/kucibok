@@ -159,20 +159,25 @@ export default async function handler(req, res) {
           limit = 300,
         } = req.query
 
-        let query = supabaseAdmin.from('artworks').select('*, artists(id, name)')
+        // ✅ CRITICAL FIX: Apply filters BEFORE select()
+        // Reason: Supabase applies select() first, which loads all 300 artworks into memory,
+        // then filters can't reduce the dataset. We need to filter the table FIRST, then select columns.
+        let query = supabaseAdmin.from('artworks')
 
         // ✅ FIX: Only apply default status='approved' filter if no artist_id or user_id is specified
         // When fetching artworks for a specific artist/user, return ALL artworks (not just approved)
         const hasOwnerFilter = artist_id || user_id
         const statusToApply = status || (hasOwnerFilter ? null : 'approved')
 
+        // Apply filters FIRST (before select) to reduce dataset at the DB level
         if (statusToApply) query = query.eq('status', statusToApply)
         if (for_sale === 'true') query = query.eq('for_sale', true)
         if (artist_id) query = query.eq('artist_id', artist_id)
         if (user_id) query = query.eq('user_id', user_id)
         if (category) query = query.eq('category', category)
 
-        query = query.order('created_at', { ascending: false }).limit(parseInt(limit))
+        // NOW select columns AFTER filters are applied, then order and limit
+        query = query.select('*, artists(id, name)').order('created_at', { ascending: false }).limit(parseInt(limit))
 
         const { data, error } = await query
 
