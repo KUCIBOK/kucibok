@@ -75,6 +75,15 @@ export default async function handler(req, res) {
     const s1 = path[1] // Second segment
     const s2 = path[2] // Third segment
 
+    // ✅ DEBUG: Log all requests
+    console.log('[API Request]', {
+      method: req.method,
+      pathname: urlObj.pathname,
+      s0,
+      s1,
+      s2,
+    })
+
     // ✅ Helper function: Validate email
     const validateEmail = (email) => {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

@@ -103,8 +103,18 @@ export const Profile = () => {
         }
       })
 
+      // ✅ FIX: Validate artistProfile.id exists before updating
+      if (!artistProfile?.id) {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: 'Erreur: Profil artiste non trouvé. Recharges la page.',
+        }))
+        return
+      }
+
       // Update artist profile (passes artistProfile.id, not user.id)
-      const updatedArtist = await updateArtist(artistProfile?.id, formData)
+      const updatedArtist = await updateArtist(artistProfile.id, formData)
 
       // Check if both updates succeeded
       if (
