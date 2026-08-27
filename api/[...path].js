@@ -553,13 +553,15 @@ export default async function handler(req, res) {
           }
 
           // Create user profile in public.users
-          // Note: DO NOT include 'email' — it's stored in auth.users, not public.users
+          // Note: Only include columns that exist in public.users table
+          // Available columns: id, name, username, role, country, telephone, auth_provider, profile_completed, onboarding_completed, is_active, last_login, created_at
           const { error: profileError } = await supabaseAdmin.from('users').insert({
             id: data.user.id,
             role: role || 'buyer',
             name: name || email.split('@')[0],
             country: country || null,
-            institution: institution || null,
+            auth_provider: 'email',
+            is_active: true,
           })
 
           if (profileError) {
