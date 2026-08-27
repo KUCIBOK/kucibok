@@ -1187,6 +1187,55 @@ export default async function handler(req, res) {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // ARTIST PROFILE ROUTE
+    // ─────────────────────────────────────────────────────────────
+    if (s0 === 'artist' && s1 && req.method === 'PUT') {
+      try {
+        // ✅ CRITICAL: Require authentication
+        const user = await getAuthUser()
+        if (!user) return
+
+        // ✅ CRITICAL: Verify user can only modify their own artist profile
+        // The s1 is the user_id, check if the artist profile belongs to this user
+        const { data: artistCheck, error: checkError } = await supabaseAdmin
+          .from('artists')
+          .select('id, user_id')
+          .eq('user_id', s1)
+          .single()
+
+        if (checkError || !artistCheck) {
+          return res.status(404).json({ error: 'Artist profile not found' })
+        }
+
+        // ✅ Verify user owns this artist profile
+        if (artistCheck.user_id !== user.id) {
+          return res.status(403).json({ error: 'You can only modify your own artist profile' })
+        }
+
+        // ✅ CRITICAL: Prevent privilege escalation (cannot change user_id)
+        const body = { ...req.body }
+        delete body.user_id
+        delete body.id
+
+        // Update artist profile
+        const { data, error } = await supabaseAdmin
+          .from('artists')
+          .update(body)
+          .eq('id', artistCheck.id)
+          .select()
+          .single()
+
+        if (error) {
+          return res.status(500).json({ error: error.message })
+        }
+
+        return res.status(200).json({ success: true, data })
+      } catch (err) {
+        return res.status(500).json({ error: err.message })
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // NUMERISATION ROUTE
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'numerisation' && (s1 === 'my' || req.method === 'GET')) {
