@@ -63,11 +63,15 @@ export const Profile = () => {
         telephone: state?.telephone,
       }
       const charge = { ...state }
+      // âœ… Remove fields that belong to users table, not artists table
       delete charge.loading
       delete charge.countries
       delete charge.error
       delete charge.show
       delete charge.addresskeyShow
+      delete charge.name        // â† belongs to users table
+      delete charge.email       // â† belongs to users table
+      delete charge.telephone   // â† belongs to users table
 
       const formData = new FormData()
       Object.keys(charge).forEach((key) => {
@@ -243,7 +247,7 @@ export const Profile = () => {
                     value={
                       user?.wallet?.privateKey
                         ? user.wallet.privateKey.slice(0, 6) +
-                          '••••••••••••••••••••' +
+                          'ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½' +
                           user.wallet.privateKey.slice(-4)
                         : ''
                     }
