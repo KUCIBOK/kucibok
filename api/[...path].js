@@ -740,6 +740,45 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: err.message })
         }
       }
+
+      // PUT /api/auth/:id — Update user profile (name, email, telephone)
+      if (req.method === 'PUT' && s1) {
+        try {
+          const user = await getAuthUser()
+          if (!user) {
+            return res.status(401).json({ error: 'Unauthorized' })
+          }
+
+          // Only allow users to update their own profile
+          if (user.id !== s1) {
+            return res.status(403).json({ error: 'You can only update your own profile' })
+          }
+
+          const { name, email, telephone } = req.body
+          const updatePayload = {}
+
+          if (name !== undefined && name !== null) updatePayload.name = name
+          if (email !== undefined && email !== null) updatePayload.email = email
+          if (telephone !== undefined && telephone !== null) updatePayload.telephone = telephone
+
+          // Update user profile
+          const { data, error } = await supabaseAdmin
+            .from('users')
+            .update(updatePayload)
+            .eq('id', s1)
+            .select()
+            .single()
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({ success: true, data })
+        } catch (err) {
+          console.error('[Auth Update Error]', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
     }
 
     // Handle both /api/professional-analytics and /api/professional/analytics
@@ -1267,13 +1306,10 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'artist' && s1 && req.method === 'PUT') {
       try {
-        console.log('[PUT /api/artist] Route matched! s0=artist, s1=', s1)
-
         // ✅ CRITICAL: Require authentication
         const user = await getAuthUser()
         if (!user) {
-          console.log('[PUT /api/artist] Auth failed')
-          return
+          return res.status(401).json({ error: 'Unauthorized' })
         }
 
         // ✅ CRITICAL: Accept artist_id in URL, not user_id
@@ -1288,13 +1324,11 @@ export default async function handler(req, res) {
           .single()
 
         if (checkError || !artistCheck) {
-          console.log('[PUT /api/artist] Artist not found:', artistId, checkError?.message)
           return res.status(404).json({ error: 'Artist profile not found' })
         }
 
         // ✅ Verify authenticated user owns this artist profile
         if (artistCheck.user_id !== user.id) {
-          console.log('[PUT /api/artist] Unauthorized:', { artistUserId: artistCheck.user_id, authUserId: user.id })
           return res.status(403).json({ error: 'You can only modify your own artist profile' })
         }
 
@@ -1313,8 +1347,6 @@ export default async function handler(req, res) {
           }
         })
 
-        console.log('[PUT /api/artist] Updating artist:', { artistId, fields: Object.keys(body) })
-
         // Update artist profile
         const { data, error } = await supabaseAdmin
           .from('artists')
@@ -1324,11 +1356,9 @@ export default async function handler(req, res) {
           .single()
 
         if (error) {
-          console.log('[PUT /api/artist] Update error:', error.message)
           return res.status(500).json({ error: error.message })
         }
 
-        console.log('[PUT /api/artist] Success')
         return res.status(200).json({ success: true, data })
       } catch (err) {
         console.error('[PUT /api/artist] Exception:', err.message)
