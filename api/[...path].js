@@ -767,13 +767,14 @@ export default async function handler(req, res) {
             .update(updatePayload)
             .eq('id', s1)
             .select()
-            .single()
 
           if (error) {
             return res.status(500).json({ error: error.message })
           }
 
-          return res.status(200).json({ success: true, data })
+          // Return first result if array, otherwise return data as-is
+          const result = Array.isArray(data) ? data[0] : data
+          return res.status(200).json({ success: true, data: result })
         } catch (err) {
           console.error('[Auth Update Error]', err.message)
           return res.status(500).json({ error: err.message })
