@@ -24,6 +24,67 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
+// ✅ Send admin notification email via Resend
+const sendAdminNotification = async (subject, message, details = {}) => {
+  console.log('[AdminNotification] Sending to kucibok221@gmail.com —', subject)
+
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.warn('[AdminNotification] RESEND_API_KEY not configured')
+      return { success: false }
+    }
+
+    const adminEmail = 'kucibok221@gmail.com'
+
+    // Format details into HTML
+    let detailsHtml = ''
+    if (Object.keys(details).length > 0) {
+      detailsHtml = '<table style="width:100%; margin-top:20px; border-collapse:collapse;">'
+      for (const [key, value] of Object.entries(details)) {
+        detailsHtml += `
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 8px; font-weight: bold; color: #666;">${key}:</td>
+            <td style="padding: 8px;">${value}</td>
+          </tr>
+        `
+      }
+      detailsHtml += '</table>'
+    }
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+      },
+      body: JSON.stringify({
+        from: 'noreply@kucibok.com',
+        to: adminEmail,
+        subject: `[KUCIBOK ADMIN] ${subject}`,
+        html: `
+          <h2 style="color: #B8A67F;">🔔 ${subject}</h2>
+          <p>${message}</p>
+          ${detailsHtml}
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+          <p style="color: #999; font-size: 12px;">Notification automatique — Ne pas répondre à cet email</p>
+        `,
+      }),
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      console.error('[AdminNotification Error]', data)
+      return { success: false }
+    }
+
+    console.log('[AdminNotification] ✅ Sent to', adminEmail)
+    return { success: true }
+  } catch (err) {
+    console.error('[AdminNotification Exception]', err.message)
+    return { success: false }
+  }
+}
+
 // ✅ Send confirmation email via Resend
 const sendConfirmationEmail = async (email, confirmationLink) => {
   console.log('[Email] Attempting to send confirmation email to', email)
@@ -363,6 +424,23 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: error.message })
         }
 
+        // ✅ Notify admin of new artwork (non-blocking)
+        try {
+          await sendAdminNotification(
+            'Nouvelle œuvre ajoutée',
+            `Un artiste a ajouté une nouvelle œuvre.`,
+            {
+              'Titre': body.title || 'Sans titre',
+              'Artiste': user.name || user.email,
+              'Catégorie': body.category || 'Non spécifiée',
+              'Prix': body.price ? `${body.price} ${body.currency || 'XOF'}` : 'Non fixé',
+              'Date': new Date().toLocaleString('fr-FR'),
+            }
+          )
+        } catch (notifErr) {
+          console.warn('[Create Artwork] Admin notification failed (non-blocking):', notifErr.message)
+        }
+
         return res.status(201).json({
           success: true,
           data: data[0],
@@ -685,13 +763,45 @@ export default async function handler(req, res) {
           }
 
           // ✅ Send confirmation email via Resend
-          // Generate a confirmation link using Supabase's email confirmation flow
-          const confirmationLink = `${process.env.CORS_ORIGIN || 'https://kucibok.com'}/auth/confirm?token=${data.user.id}`
+          // Generate a verification link using Supabase's built-in flow
+          try {
+            const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+              type: 'email_verification',
+              email: email,
+              options: {
+                redirectTo: `${process.env.CORS_ORIGIN || 'https://kucibok.com'}/auth/verify-email`,
+              },
+            })
 
-          const emailResult = await sendConfirmationEmail(email, confirmationLink)
-          if (!emailResult.success) {
-            console.warn('[Signup] Email send failed (non-blocking):', emailResult.error)
-            // Continue signup even if email fails
+            if (linkError || !linkData?.properties?.action_link) {
+              console.warn('[Signup] Failed to generate verification link:', linkError?.message)
+            } else {
+              const confirmationLink = linkData.properties.action_link
+              const emailResult = await sendConfirmationEmail(email, confirmationLink)
+              if (!emailResult.success) {
+                console.warn('[Signup] Email send failed (non-blocking):', emailResult.error)
+              }
+            }
+          } catch (emailErr) {
+            console.warn('[Signup] Email sending exception (non-blocking):', emailErr.message)
+          }
+
+          // ✅ Notify admin of new signup (non-blocking)
+          try {
+            await sendAdminNotification(
+              'Nouvel utilisateur inscrit',
+              `Un nouvel utilisateur s'est inscrit sur la plateforme.`,
+              {
+                'Email': email,
+                'Nom': name || 'Non fourni',
+                'Rôle': role || 'buyer',
+                'Pays': country || 'Non fourni',
+                'Institution': institution || 'Non fourni',
+                'Date': new Date().toLocaleString('fr-FR'),
+              }
+            )
+          } catch (notifErr) {
+            console.warn('[Signup] Admin notification failed (non-blocking):', notifErr.message)
           }
 
           return res.status(201).json({
@@ -963,6 +1073,28 @@ export default async function handler(req, res) {
           if (error) {
             console.error('[Trial Creation Error]', error)
             return res.status(500).json({ error: error.message })
+          }
+
+          // ✅ Notify admin of new trial subscription (non-blocking)
+          try {
+            const { data: userData } = await supabaseAdmin
+              .from('users')
+              .select('name, email, role')
+              .eq('id', user_id)
+              .single()
+
+            await sendAdminNotification(
+              'Nouvel abonnement créé (Trial)',
+              `Un utilisateur a commencé un abonnement d'essai de 14 jours.`,
+              {
+                'Utilisateur': userData?.name || userData?.email || 'Inconnu',
+                'Rôle': userData?.role || 'buyer',
+                'Fin d\'essai': new Date(trialEndDate).toLocaleDateString('fr-FR'),
+                'Date': new Date().toLocaleString('fr-FR'),
+              }
+            )
+          } catch (notifErr) {
+            console.warn('[Trial Subscription] Admin notification failed (non-blocking):', notifErr.message)
           }
 
           return res.status(201).json({
