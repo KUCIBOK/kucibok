@@ -120,7 +120,9 @@ export const ArtworksContextProvider = ({ children }) => {
             approved: Array.isArray(approved) ? [...approved].reverse() : [],
             rejected: Array.isArray(rejected) ? [...rejected].reverse() : [],
           }))
+          return
         }
+
         // ✅ ARTIST: Fetch only their own artworks (by artist_id)
         if (user?.role == 'artist') {
           if (!artistProfile?.id) {
