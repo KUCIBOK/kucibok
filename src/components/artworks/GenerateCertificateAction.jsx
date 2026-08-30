@@ -2,6 +2,7 @@ import { Award, Download, Eye, Loader2 } from 'lucide-react'
 import { memo, useState } from 'react'
 import { utils } from '../../api/useAPI'
 import { useToast } from '../../store/ToastContext'
+import { useCertificate } from '../../api/useNotifications'
 
 /**
  * Colonne Certificat dans le tableau des œuvres.
@@ -14,6 +15,7 @@ export const GenerateCertificateAction = memo(function GenerateCertificateAction
   const { makeToast } = useToast()
   const [generating, setGenerating] = useState(false)
   const [fetching, setFetching] = useState(false)
+  const { generate: notifyCertificate } = useCertificate()
 
   // Supporte snake_case (DB) et camelCase (ancien mapping) et certificate_url direct
   const [localCertPath, setLocalCertPath] = useState(
@@ -71,6 +73,20 @@ export const GenerateCertificateAction = memo(function GenerateCertificateAction
       setLocalCertPath(data?.certificate_path ?? `artworks/${data?.kucibok_id ?? artworkId}.pdf`)
       makeToast('Certificat généré', 'success', artwork?.title)
       onGenerated?.(data)
+
+      // Notify admin of new certificate generation
+      try {
+        await notifyCertificate(
+          artworkId,
+          artwork?.artist || 'Unknown',
+          artwork?.title || 'Untitled',
+          artwork?.dimensions || '',
+          artwork?.medium || '',
+          artwork?.year || new Date().getFullYear()
+        )
+      } catch (notifErr) {
+        console.warn('Certificate notification failed:', notifErr)
+      }
     } catch (err) {
       makeToast('Erreur', 'danger', err.message)
     } finally {
