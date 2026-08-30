@@ -137,7 +137,10 @@ export async function getOwnerForSaleArtworks(id) {
  * @returns {Promise<object>}
  */
 export async function getMyArtworks(id) {
-  return fetchArtworks({ artist_id: id })
+  console.log('[getMyArtworks] Fetching for artist_id:', id, 'type:', typeof id)
+  const result = await fetchArtworks({ artist_id: id })
+  console.log('[getMyArtworks] Result count:', Array.isArray(result) ? result.length : 'error', result)
+  return result
 }
 
 /**

@@ -134,7 +134,13 @@ export const ArtworksContextProvider = ({ children }) => {
             }))
             return
           }
+          console.log('[ArtworkContext] ARTIST MODE - Fetching for:', {
+            user_id: user._id,
+            artist_id: artistProfile?.id,
+            already_loaded: loadedProfilesRef.current.has(user._id)
+          })
           const result = await getMyArtworks(artistProfile?.id)
+          console.log('[ArtworkContext] ARTIST result:', Array.isArray(result) ? `${result.length} artworks` : result)
           const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
           loadedProfilesRef.current.add(user._id) // Mark user as loaded
           setState((prev) => ({
@@ -142,6 +148,7 @@ export const ArtworksContextProvider = ({ children }) => {
             myArtworks,
             loading: false,
           }))
+          console.log('[ArtworkContext] setState called with myArtworks.length:', myArtworks.length)
           return
         }
 
