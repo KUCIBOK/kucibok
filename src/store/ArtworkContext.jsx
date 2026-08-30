@@ -78,8 +78,20 @@ export const ArtworksContextProvider = ({ children }) => {
 
   useEffect(() => {
     console.log('[ArtworkContext] useEffect triggered - user:', user?._id, 'role:', user?.role, 'artistProfile?.id:', artistProfile?.id)
-    if (user?._id) {
-      const getProfileArtworks = async () => {
+
+    // ✅ FIX: Don't run until user AND profile are loaded
+    if (!user?._id) {
+      setState((prev) => ({ ...prev, loading: false }))
+      return
+    }
+
+    // ✅ CRITICAL: For artists/curators, WAIT for their profile to load first
+    if ((user?.role === 'artist' || user?.role === 'curator') && !artistProfile?.id) {
+      console.warn('[ArtworkContext] Waiting for artist/curator profile to load...')
+      return // Wait for next effect run when artistProfile is available
+    }
+
+    const getProfileArtworks = async () => {
         if (user?.role == 'admin') {
           // Fetch par statut séparément pour éviter la limite de pagination
           const [pending, approved, rejected] = await Promise.all([
