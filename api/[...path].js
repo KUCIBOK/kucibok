@@ -330,6 +330,14 @@ export default async function handler(req, res) {
 
         const { data: filteredArtworks, error } = await query
 
+        console.log('[GET /api/artworks] RESULT:', {
+          error: error?.message,
+          count: filteredArtworks?.length,
+          first_artwork_artist_id: filteredArtworks?.[0]?.artist_id,
+          requested_artist_id: artist_id,
+          matches: filteredArtworks?.[0]?.artist_id === artist_id ? 'YES ✓' : 'NO ✗ MISMATCH!',
+        })
+
         if (error) {
           console.error('[GET /api/artworks] Query error:', error)
           return res.status(500).json({
