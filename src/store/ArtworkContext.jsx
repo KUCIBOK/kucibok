@@ -181,7 +181,6 @@ export const ArtworksContextProvider = ({ children }) => {
       // ✅ CRITICAL: Always await the profile artworks load
       // This prevents rendering the dashboard before myArtworks is loaded
       getProfileArtworks()
-    }
   }, [user?.id, user?.role, artistProfile?.id, curatorProfile?.id])
   const contextValue = useMemo(
     () => ({
