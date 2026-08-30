@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import {
   fetchArtworks,
   getAllArtworks,
@@ -49,6 +49,7 @@ export const ArtworksContextProvider = ({ children }) => {
   const [state, setState] = useState(initialState)
   const { user, artistProfile, curatorProfile } = useAuth()
   const { makeToast } = useToast()
+  const loadedProfilesRef = useRef(new Set()) // Track which profiles we've already loaded
   // ✅ FIX: Load public artworks (don't block dashboard loading)
   useEffect(() => {
     const loadPublicArtworks = async () => {
@@ -91,6 +92,14 @@ export const ArtworksContextProvider = ({ children }) => {
       return // Wait for next effect run when artistProfile is available
     }
 
+    // ✅ PREVENT DOUBLE-LOADS: Check if we've already loaded this profile
+    const profileKey = user?.role === 'artist' ? artistProfile?.id : curatorProfile?.id
+    if (profileKey && loadedProfilesRef.current.has(profileKey)) {
+      console.log('[ArtworkContext] Profile already loaded:', profileKey)
+      setState((prev) => ({ ...prev, loading: false }))
+      return
+    }
+
     const getProfileArtworks = async () => {
         if (user?.role == 'admin') {
           // Fetch par statut séparément pour éviter la limite de pagination
@@ -125,6 +134,7 @@ export const ArtworksContextProvider = ({ children }) => {
           }
           const result = await getMyArtworks(artistProfile?.id)
           const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
+          loadedProfilesRef.current.add(artistProfile?.id) // Mark as loaded
           setState((prev) => ({
             ...prev,
             myArtworks,
