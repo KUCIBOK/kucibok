@@ -92,10 +92,10 @@ export const ArtworksContextProvider = ({ children }) => {
       return // Wait for next effect run when artistProfile is available
     }
 
-    // ✅ PREVENT DOUBLE-LOADS: Check if we've already loaded this profile
-    const profileKey = user?.role === 'artist' ? artistProfile?.id : curatorProfile?.id
-    if (profileKey && loadedProfilesRef.current.has(profileKey)) {
-      console.log('[ArtworkContext] Profile already loaded:', profileKey)
+    // ✅ PREVENT DOUBLE-LOADS: Check if we've already loaded this user's artworks
+    // Use user._id as key, not artistProfile.id (which may be undefined initially)
+    if (user?._id && loadedProfilesRef.current.has(user._id)) {
+      console.log('[ArtworkContext] User artworks already loaded:', user._id)
       setState((prev) => ({ ...prev, loading: false }))
       return
     }
@@ -136,7 +136,7 @@ export const ArtworksContextProvider = ({ children }) => {
           }
           const result = await getMyArtworks(artistProfile?.id)
           const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
-          loadedProfilesRef.current.add(artistProfile?.id) // Mark as loaded
+          loadedProfilesRef.current.add(user._id) // Mark user as loaded
           setState((prev) => ({
             ...prev,
             myArtworks,
