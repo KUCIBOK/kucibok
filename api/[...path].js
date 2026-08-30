@@ -1990,13 +1990,19 @@ export default async function handler(req, res) {
             })
           }
 
-          // Get current user if authenticated
+          // Get current user if authenticated (optional)
           let userId = null
           try {
-            const user = await getAuthUser()
-            userId = user?.id
+            const authHeader = req.headers.authorization
+            if (authHeader?.startsWith('Bearer ')) {
+              const token = authHeader.substring(7)
+              const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
+              if (user && !error) {
+                userId = user.id
+              }
+            }
           } catch (e) {
-            // Not authenticated, that's ok
+            // Not authenticated, that's ok for error reporting
           }
 
           // Insert error report
