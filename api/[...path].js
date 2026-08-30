@@ -24,6 +24,54 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
+// ✅ Send confirmation email via Resend
+const sendConfirmationEmail = async (email, confirmationLink) => {
+  console.log('[Email] Attempting to send confirmation email to', email)
+
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error('[Email] ❌ RESEND_API_KEY not configured in Vercel environment!')
+      return { success: false, error: 'RESEND_API_KEY not configured' }
+    }
+
+    console.log('[Email] ✅ RESEND_API_KEY found, sending via Resend API...')
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+      },
+      body: JSON.stringify({
+        from: 'noreply@kucibok.com',
+        to: email,
+        subject: 'Confirmez votre email — Kucibok',
+        html: `
+          <h2>Bienvenue sur Kucibok</h2>
+          <p>Cliquez sur le lien ci-dessous pour confirmer votre adresse email :</p>
+          <p><a href="${confirmationLink}" style="background-color: #B8A67F; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Confirmer mon email</a></p>
+          <p>Ou copiez ce lien :</p>
+          <p>${confirmationLink}</p>
+          <p>Ce lien expire dans 24 heures.</p>
+        `,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error('[Resend Error] HTTP', response.status, '—', data)
+      return { success: false, error: data.message || data.error || 'Failed to send email' }
+    }
+
+    console.log('[Resend] ✅ Email sent successfully to', email, '—', data.id)
+    return { success: true, messageId: data.id }
+  } catch (err) {
+    console.error('[Resend Exception] ❌', err.message, err.stack)
+    return { success: false, error: err.message }
+  }
+}
+
 export default async function handler(req, res) {
   // ✅ CORS headers — with validation, NO WILDCARD
   const corsOrigin = process.env.CORS_ORIGIN || 'https://kucibok.com'
@@ -636,6 +684,16 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: 'Failed to create user profile' })
           }
 
+          // ✅ Send confirmation email via Resend
+          // Generate a confirmation link using Supabase's email confirmation flow
+          const confirmationLink = `${process.env.CORS_ORIGIN || 'https://kucibok.com'}/auth/confirm?token=${data.user.id}`
+
+          const emailResult = await sendConfirmationEmail(email, confirmationLink)
+          if (!emailResult.success) {
+            console.warn('[Signup] Email send failed (non-blocking):', emailResult.error)
+            // Continue signup even if email fails
+          }
+
           return res.status(201).json({
             success: true,
             data: {
@@ -707,6 +765,39 @@ export default async function handler(req, res) {
         } catch (err) {
           console.error('[Signin Exception]', err.message)
           return res.status(500).json({ error: err.message || 'Login failed' })
+        }
+      }
+
+      // GET /api/auth — List all users (Admin only)
+      if (req.method === 'GET' && !s1) {
+        try {
+          const user = await getAuthUser()
+          if (!user) {
+            return res.status(401).json({ error: 'Unauthorized' })
+          }
+
+          // Check if user is admin
+          if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Only admins can list users' })
+          }
+
+          // Fetch all users from public.users table
+          const { data: users, error } = await supabaseAdmin
+            .from('users')
+            .select('*')
+            .order('created_at', { ascending: false })
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({
+            success: true,
+            data: users || [],
+          })
+        } catch (err) {
+          console.error('[Auth List Users Error]', err)
+          return res.status(500).json({ error: err.message })
         }
       }
 
