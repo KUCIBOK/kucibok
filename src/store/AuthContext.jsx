@@ -151,8 +151,9 @@ export function AuthContextProvider({ children }) {
               const dbRole = await loadDbRole(kcbUser._id, kcbUser.role)
               kcbUser.role = dbRole ?? 'buyer'
               setUser(kcbUser)
-              loadProfile(kcbUser)
-              loadSubscription()
+              // ✅ CRITICAL: Wait for profile to load before marking loading as false
+              await loadProfile(kcbUser)
+              await loadSubscription()
             } else {
               setUser(null)
             }
@@ -188,8 +189,8 @@ export function AuthContextProvider({ children }) {
         }
 
         if (event === 'SIGNED_IN' && kcbUser) {
-          loadProfile(kcbUser)
-          loadSubscription()
+          await loadProfile(kcbUser)
+          await loadSubscription()
           createLog({
             description: `L'utilisateur ${kcbUser.name || kcbUser.email} s'est connecté`,
             userId: kcbUser._id,
