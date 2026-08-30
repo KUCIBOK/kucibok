@@ -1815,6 +1815,248 @@ export default async function handler(req, res) {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // CERTIFICATES ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'certificates') {
+      // POST /api/certificates/generate — Generate KCB certificate
+      if (req.method === 'POST' && s1 === 'generate') {
+        try {
+          const user = await getAuthUser()
+          if (!user) return
+
+          // Only artist, curator, advisor can generate certificates
+          if (!['artist', 'curator', 'advisor'].includes(user.role)) {
+            return res.status(403).json({
+              error: 'Only artists, curators, and advisors can generate certificates',
+            })
+          }
+
+          const { artwork_id, artist_name, artwork_title, dimensions, medium, year } = req.body
+
+          if (!artwork_id || !artwork_title || !artist_name) {
+            return res.status(400).json({
+              error: 'Missing required fields: artwork_id, artwork_title, artist_name',
+            })
+          }
+
+          // Generate KCB certificate number (KCB-XXXXXXXX format)
+          const kcbNumber = `KCB-${Math.random().toString(36).substr(2, 8).toUpperCase()}`
+
+          // Insert certificate record
+          const { data, error } = await supabaseAdmin
+            .from('certificates')
+            .insert({
+              artwork_id,
+              kcb_number: kcbNumber,
+              artist_name,
+              artwork_title,
+              dimensions,
+              medium,
+              year,
+              issued_by: user.id,
+              status: 'active',
+              issued_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (error) {
+            console.error('[Certificate Error]', error)
+            return res.status(500).json({ error: error.message })
+          }
+
+          // ✅ Notify admin of new certificate (non-blocking)
+          try {
+            await sendAdminNotification(
+              '🏆 Nouveau certificat KCB généré',
+              'Un certificat de provenance a été généré pour une œuvre.',
+              {
+                'Numéro KCB': kcbNumber,
+                'Titre': artwork_title,
+                'Artiste': artist_name,
+                'Émis par': user.name || user.email,
+                'Rôle': user.role,
+                'Médium': medium || 'Non spécifié',
+                'Année': year || 'Non spécifiée',
+                'Date': new Date().toLocaleString('fr-FR'),
+              }
+            )
+          } catch (notifErr) {
+            console.warn('[Certificate] Admin notification failed:', notifErr.message)
+          }
+
+          return res.status(201).json({
+            success: true,
+            data,
+            message: `Certificate ${kcbNumber} generated successfully`,
+          })
+        } catch (err) {
+          console.error('[Certificate Exception]', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // COMMENTS/REVIEWS ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'comments') {
+      // POST /api/comments/artwork/:artworkId — Add comment/review to artwork
+      if (req.method === 'POST' && s1 === 'artwork' && s2) {
+        try {
+          const user = await getAuthUser()
+          if (!user) return
+
+          const artworkId = s2
+          const { text, rating } = req.body
+
+          if (!text || text.trim().length === 0) {
+            return res.status(400).json({ error: 'Comment text is required' })
+          }
+
+          if (text.length > 5000) {
+            return res.status(400).json({ error: 'Comment must be less than 5000 characters' })
+          }
+
+          if (rating && (rating < 1 || rating > 5)) {
+            return res.status(400).json({ error: 'Rating must be between 1 and 5' })
+          }
+
+          // Insert comment
+          const { data, error } = await supabaseAdmin
+            .from('comments')
+            .insert({
+              artwork_id: artworkId,
+              user_id: user.id,
+              text,
+              rating: rating || null,
+              status: 'pending', // Requires moderation
+              created_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (error) {
+            console.error('[Comment Error]', error)
+            return res.status(500).json({ error: error.message })
+          }
+
+          // ✅ Notify admin of new comment (non-blocking)
+          try {
+            const { data: artworkData } = await supabaseAdmin
+              .from('artworks')
+              .select('title')
+              .eq('id', artworkId)
+              .single()
+
+            await sendAdminNotification(
+              '💬 Nouveau commentaire à modérer',
+              'Un commentaire a été publié et nécessite une modération.',
+              {
+                'Auteur': user.name || user.email,
+                'Rôle Auteur': user.role,
+                'Œuvre': artworkData?.title || 'Inconnu',
+                'Texte': text.substring(0, 150) + (text.length > 150 ? '...' : ''),
+                'Note': rating ? `${rating}/5` : 'Aucune',
+                'Statut': 'En attente de modération',
+                'Date': new Date().toLocaleString('fr-FR'),
+              }
+            )
+          } catch (notifErr) {
+            console.warn('[Comment] Admin notification failed:', notifErr.message)
+          }
+
+          return res.status(201).json({
+            success: true,
+            data,
+            message: 'Comment submitted and pending moderation',
+          })
+        } catch (err) {
+          console.error('[Comment Exception]', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // ERROR REPORTING ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'errors') {
+      // POST /api/errors/report — Report application error
+      if (req.method === 'POST' && s1 === 'report') {
+        try {
+          const { error_message, error_type, page_url, user_agent, additional_context } = req.body
+
+          if (!error_message || !error_type) {
+            return res.status(400).json({
+              error: 'Missing required fields: error_message, error_type',
+            })
+          }
+
+          // Get current user if authenticated
+          let userId = null
+          try {
+            const user = await getAuthUser()
+            userId = user?.id
+          } catch (e) {
+            // Not authenticated, that's ok
+          }
+
+          // Insert error report
+          const { data, error } = await supabaseAdmin
+            .from('error_reports')
+            .insert({
+              error_message,
+              error_type,
+              page_url: page_url || 'Unknown',
+              user_agent: user_agent || 'Unknown',
+              user_id: userId,
+              additional_context,
+              status: 'new',
+              reported_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (error) {
+            console.error('[Error Report Insert Error]', error)
+            return res.status(500).json({ error: error.message })
+          }
+
+          // ✅ Notify admin of error report (non-blocking)
+          try {
+            await sendAdminNotification(
+              '🚨 Rapport d\'erreur détecté',
+              'Un utilisateur a signalé une erreur dans l\'application.',
+              {
+                'Type d\'erreur': error_type,
+                'Message': error_message.substring(0, 100) + (error_message.length > 100 ? '...' : ''),
+                'Page': page_url || 'Unknown',
+                'Utilisateur': userId ? 'Connecté' : 'Anonyme',
+                'Contexte': additional_context || 'Aucun',
+                'Date': new Date().toLocaleString('fr-FR'),
+              }
+            )
+          } catch (notifErr) {
+            console.warn('[Error Report] Admin notification failed:', notifErr.message)
+          }
+
+          return res.status(201).json({
+            success: true,
+            data,
+            message: 'Error report submitted successfully',
+          })
+        } catch (err) {
+          console.error('[Error Report Exception]', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // NUMERISATION ROUTE
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'numerisation' && (s1 === 'my' || req.method === 'GET')) {
