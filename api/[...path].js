@@ -372,10 +372,24 @@ export default async function handler(req, res) {
 
         console.log('[GET /api/artworks] Returning', artworksWithArtistNames.length, 'artworks')
 
+        // ✅ DEBUG: Include filter diagnosis in response (for finding 0→300 bug)
+        const filterDiagnosis = {
+          artist_id: artist_id || null,
+          user_id: user_id || null,
+          status: status || null,
+          for_sale: for_sale || null,
+          category: category || null,
+          limit: limit,
+          returned_count: artworksWithArtistNames.length,
+          first_artwork_artist_id: filteredArtworks?.[0]?.artist_id || null,
+          filter_match: artist_id ? (filteredArtworks?.[0]?.artist_id === artist_id ? 'YES ✓' : 'NO ✗ MISMATCH!') : 'N/A (no artist_id filter)',
+        }
+
         return res.status(200).json({
           success: true,
           artworks: artworksWithArtistNames,
           count: artworksWithArtistNames.length,
+          _debug: filterDiagnosis, // ✅ DEBUG INFO — remove in production
         })
       }
 
