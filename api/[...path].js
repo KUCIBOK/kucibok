@@ -1598,30 +1598,25 @@ export default async function handler(req, res) {
       // POST /api/sourcing/inquiry — Submit sourcing inquiry
       if (req.method === 'POST' && s1 === 'inquiry') {
         try {
-          const { company_name, inquiry_type, contact_email, contact_name, message } = req.body
+          const { organization, purpose, budget, message, requested_by } = req.body
 
           // Validate required fields
-          if (!company_name || !inquiry_type || !contact_email || !message) {
+          if (!organization || !purpose || !message) {
             return res.status(400).json({
-              error: 'Missing required fields: company_name, inquiry_type, contact_email, message',
+              error: 'Missing required fields: organization, purpose, message',
             })
-          }
-
-          if (!validateEmail(contact_email)) {
-            return res.status(400).json({ error: 'Invalid email format' })
           }
 
           // Insert sourcing inquiry
           const { data, error } = await supabaseAdmin
             .from('sourcing_inquiries')
             .insert({
-              company_name,
-              inquiry_type,
-              contact_email,
-              contact_name: contact_name || 'Non fourni',
+              organization,
+              purpose,
+              budget: budget || null,
               message,
-              status: 'new',
-              created_at: new Date().toISOString(),
+              requested_by: requested_by || null,
+              status: 'pending',
             })
             .select()
             .single()
@@ -1634,13 +1629,12 @@ export default async function handler(req, res) {
           // ✅ Notify admin of new sourcing inquiry (non-blocking)
           try {
             await sendAdminNotification(
-              '🤝 Nouvelle demande de partenariat (Sourcing)',
-              'Une entreprise souhaite établir un partenariat avec Kucibok.',
+              '🤝 Nouvelle demande de sourcing (Partenariat)',
+              'Une organisation souhaite établir un partenariat avec Kucibok.',
               {
-                'Entreprise': company_name,
-                'Type': inquiry_type,
-                'Contact': contact_name || 'Non fourni',
-                'Email': contact_email,
+                'Organisation': organization,
+                'Objectif': purpose,
+                'Budget': budget ? `${budget} XOF` : 'Non spécifié',
                 'Message': message.substring(0, 100) + (message.length > 100 ? '...' : ''),
                 'Date': new Date().toLocaleString('fr-FR'),
               }
