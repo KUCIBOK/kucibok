@@ -5,6 +5,7 @@ import { ErrorBoundary } from 'react-error-boundary'
 import { BrowserRouter } from 'react-router-dom'
 import * as Sentry from '@sentry/react'
 import Error500 from './components/fallback/Error500'
+import { ErrorBoundaryWithNotificationsWrapper } from './components/fallback/ErrorBoundaryWithNotifications'
 
 // Initialize Sentry for error tracking in production
 // Uses VITE_SENTRY_DSN environment variable. In local dev you can set
@@ -66,10 +67,12 @@ createRoot(document.getElementById('root')).render(
       onClose: () => window.location.reload(),
     }}
   >
-    <ErrorBoundary FallbackComponent={AppFallback}>
-      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#0f0f0f' }} />}>
-        <AppWithSentry />
-      </Suspense>
-    </ErrorBoundary>
+    <ErrorBoundaryWithNotificationsWrapper>
+      <ErrorBoundary FallbackComponent={AppFallback}>
+        <Suspense fallback={<div style={{ minHeight: '100vh', background: '#0f0f0f' }} />}>
+          <AppWithSentry />
+        </Suspense>
+      </ErrorBoundary>
+    </ErrorBoundaryWithNotificationsWrapper>
   </SentryErrorBoundary>
 )
