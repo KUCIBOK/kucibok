@@ -107,7 +107,9 @@ export const ArtworksContextProvider = ({ children }) => {
           setState((prev) => ({
             ...prev,
             myArtworks,
+            loading: false,
           }))
+          return
         }
 
         // ✅ BUYER: Fetch their purchases
@@ -120,7 +122,9 @@ export const ArtworksContextProvider = ({ children }) => {
             ...prev,
             buyed: buyed?.length > 0 ? [...buyed].reverse() : [],
             myArtworks: myArtworks?.length > 0 ? [...myArtworks].reverse() : [],
+            loading: false,
           }))
+          return
         }
 
         // ✅ CURATOR: Fetch managed artworks
@@ -130,7 +134,15 @@ export const ArtworksContextProvider = ({ children }) => {
           setState((prev) => ({
             ...prev,
             myArtworks: myArtworks?.length > 0 ? [...myArtworks].reverse() : [],
+            loading: false,
           }))
+          return
+        }
+
+        // ✅ ADMIN: Mark loading as done after fetching
+        if (user?.role === 'admin') {
+          setState((prev) => ({ ...prev, loading: false }))
+          return
         }
       }
       // ✅ CRITICAL: Always await the profile artworks load
