@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X, Send, CheckCircle2 } from 'lucide-react'
-import { createInquiry } from '../../api/useSourcing'
+import { useSourcingInquiry } from '../../api/useNotifications'
 
 const PURPOSE_OPTIONS = [
   { value: 'exhibition', label: 'Exposition temporaire' },
@@ -32,9 +32,9 @@ const INITIAL = { purpose: '', organization: '', budget: '', message: '' }
  */
 export function SourcingInquiryModal({ artwork, isOpen, onClose }) {
   const [form, setForm] = useState(INITIAL)
-  const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
+  const { submit, loading, error: hookError } = useSourcingInquiry()
 
   const availability = artwork?.availabilityStatus
     ? AVAILABILITY_LABELS[artwork.availabilityStatus]
@@ -54,19 +54,20 @@ export function SourcingInquiryModal({ artwork, isOpen, onClose }) {
       setError("Veuillez indiquer l'objet et votre message.")
       return
     }
-    setLoading(true)
-    const result = await createInquiry({
-      artworkId: artwork._id,
-      purpose: form.purpose,
-      organization: form.organization,
-      budget: form.budget,
-      message: form.message,
-    })
-    setLoading(false)
-    if (result?.error) {
-      setError(result.error)
+
+    // Submit via new hook (sends admin notification automatically)
+    const result = await submit(
+      form.organization || 'Non spécifié',
+      form.purpose,
+      form.budget || null,
+      form.message
+    )
+
+    if (result.error) {
+      setError(result.error || hookError)
     } else {
       setSuccess(true)
+      // Admin is now notified automatically via notification system
     }
   }
 
