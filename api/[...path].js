@@ -280,6 +280,16 @@ export default async function handler(req, res) {
           limit = 300,
         } = req.query
 
+        // DEBUG: Log the query parameters to catch filtering issues
+        console.log('[GET /api/artworks] Query params:', {
+          artist_id,
+          user_id,
+          status,
+          for_sale,
+          category,
+          limit,
+        })
+
         // ✅ CRITICAL FIX: Build query with filters first, THEN select with relations
         // Reason: Supabase JS loads .select() result in memory first, making filters ineffective
         // We must chain: from() → filters → select() → order() → limit()
@@ -305,12 +315,15 @@ export default async function handler(req, res) {
         const { data: filteredArtworks, error } = await query
 
         if (error) {
+          console.error('[GET /api/artworks] Query error:', error)
           return res.status(500).json({
             error: error.message,
             success: false,
             artworks: [],
           })
         }
+
+        console.log('[GET /api/artworks] Filtered results:', filteredArtworks?.length, 'artworks')
 
         // NOW fetch artist data for the filtered artworks
         const artworkIds = (filteredArtworks || []).map(a => a.artist_id).filter(Boolean)
@@ -332,6 +345,8 @@ export default async function handler(req, res) {
           ...artwork,
           artist: artistData[artwork.artist_id]?.name || artwork.artist || 'Unknown artist',
         }))
+
+        console.log('[GET /api/artworks] Returning', artworksWithArtistNames.length, 'artworks')
 
         return res.status(200).json({
           success: true,

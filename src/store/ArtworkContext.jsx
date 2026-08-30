@@ -101,7 +101,16 @@ export const ArtworksContextProvider = ({ children }) => {
           }))
         }
         // ✅ ARTIST: Fetch only their own artworks (by artist_id)
-        if (user?.role == 'artist' && artistProfile?.id) {
+        if (user?.role == 'artist') {
+          if (!artistProfile?.id) {
+            console.warn('[ArtworkContext] Artist profile ID missing!', { artistProfile })
+            setState((prev) => ({
+              ...prev,
+              myArtworks: [],
+              loading: false,
+            }))
+            return
+          }
           const result = await getMyArtworks(artistProfile?.id)
           const myArtworks = result?.error ? [] : (Array.isArray(result) ? result : [])
           setState((prev) => ({
