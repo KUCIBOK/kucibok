@@ -1432,6 +1432,13 @@ export default async function handler(req, res) {
             .eq('user_id', s1)
             .single()
 
+          console.log('[GET /api/profile] Artist query result:', {
+            user_id: s1,
+            has_data: !!artistData,
+            has_error: !!artistError,
+            artist_id: artistData?.id,
+          })
+
           // ✅ FIX: Auto-create artist profile if it doesn't exist
           if (artistError || !artistData) {
             console.log('[GET /api/profile] Artist profile not found, creating one for user:', s1)
@@ -1441,19 +1448,33 @@ export default async function handler(req, res) {
               .select()
               .single()
 
+            console.log('[GET /api/profile] Artist creation result:', {
+              created: !!newArtist,
+              error: createError?.message,
+              new_artist_id: newArtist?.id,
+            })
+
             if (createError || !newArtist) {
-              console.log('[GET /api/profile] Failed to create artist profile:', createError?.message)
-              // Fallback to users table if artist creation fails
-              const { data: fallbackData } = await supabaseAdmin
-                .from('users')
-                .select('*')
-                .eq('id', s1)
-                .single()
-              return res.status(200).json({ success: true, data: fallbackData })
+              console.error('[GET /api/profile] CRITICAL: Failed to create artist profile:', createError?.message)
+              // ❌ DO NOT fallback to users table — return empty artist instead
+              // The frontend expects artistProfile.id from the artists table
+              return res.status(200).json({
+                success: true,
+                data: {
+                  id: null, // Signal to frontend that profile load failed
+                  user_id: s1,
+                  error: 'Profile creation failed',
+                }
+              })
             }
 
             artistData = newArtist
           }
+
+          console.log('[GET /api/profile] Returning artist profile:', {
+            artist_id: artistData?.id,
+            user_id: artistData?.user_id,
+          })
 
           return res.status(200).json({ success: true, data: artistData })
         }
