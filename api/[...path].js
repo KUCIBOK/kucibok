@@ -1591,6 +1591,230 @@ export default async function handler(req, res) {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // SOURCING INQUIRIES ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'sourcing') {
+      // POST /api/sourcing/inquiry — Submit sourcing inquiry
+      if (req.method === 'POST' && s1 === 'inquiry') {
+        try {
+          const { company_name, inquiry_type, contact_email, contact_name, message } = req.body
+
+          // Validate required fields
+          if (!company_name || !inquiry_type || !contact_email || !message) {
+            return res.status(400).json({
+              error: 'Missing required fields: company_name, inquiry_type, contact_email, message',
+            })
+          }
+
+          if (!validateEmail(contact_email)) {
+            return res.status(400).json({ error: 'Invalid email format' })
+          }
+
+          // Insert sourcing inquiry
+          const { data, error } = await supabaseAdmin
+            .from('sourcing_inquiries')
+            .insert({
+              company_name,
+              inquiry_type,
+              contact_email,
+              contact_name: contact_name || 'Non fourni',
+              message,
+              status: 'new',
+              created_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (error) {
+            console.error('[Sourcing Inquiry Error]', error)
+            return res.status(500).json({ error: error.message })
+          }
+
+          // ✅ Notify admin of new sourcing inquiry (non-blocking)
+          try {
+            await sendAdminNotification(
+              '🤝 Nouvelle demande de partenariat (Sourcing)',
+              'Une entreprise souhaite établir un partenariat avec Kucibok.',
+              {
+                'Entreprise': company_name,
+                'Type': inquiry_type,
+                'Contact': contact_name || 'Non fourni',
+                'Email': contact_email,
+                'Message': message.substring(0, 100) + (message.length > 100 ? '...' : ''),
+                'Date': new Date().toLocaleString('fr-FR'),
+              }
+            )
+          } catch (notifErr) {
+            console.warn('[Sourcing] Admin notification failed:', notifErr.message)
+          }
+
+          return res.status(201).json({
+            success: true,
+            data,
+            message: 'Sourcing inquiry submitted successfully',
+          })
+        } catch (err) {
+          console.error('[Sourcing Inquiry Exception]', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // DELIVERY ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'delivery') {
+      // POST /api/delivery/request — Create delivery request
+      if (req.method === 'POST' && s1 === 'request') {
+        try {
+          const user = await getAuthUser()
+          if (!user) return
+
+          // Only artist, curator, advisor can create delivery requests
+          if (!['artist', 'curator', 'advisor'].includes(user.role)) {
+            return res.status(403).json({
+              error: 'Only artists, curators, and advisors can create delivery requests',
+            })
+          }
+
+          const { artwork_ids, destination_country, delivery_type, special_instructions } = req.body
+
+          if (!artwork_ids || !Array.isArray(artwork_ids) || artwork_ids.length === 0) {
+            return res.status(400).json({ error: 'artwork_ids must be a non-empty array' })
+          }
+
+          if (!destination_country) {
+            return res.status(400).json({ error: 'destination_country is required' })
+          }
+
+          // Create delivery request
+          const { data, error } = await supabaseAdmin
+            .from('delivery_requests')
+            .insert({
+              user_id: user.id,
+              destination_country,
+              delivery_type: delivery_type || 'standard',
+              special_instructions,
+              status: 'pending',
+              created_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (error) {
+            console.error('[Delivery Request Error]', error)
+            return res.status(500).json({ error: error.message })
+          }
+
+          // ✅ Notify admin of new delivery request (non-blocking)
+          try {
+            await sendAdminNotification(
+              '🚚 Nouvelle demande de livraison',
+              'Un utilisateur a créé une demande de livraison transfrontalière.',
+              {
+                'Utilisateur': user.name || user.email,
+                'Rôle': user.role,
+                'Destination': destination_country,
+                'Type': delivery_type || 'Standard',
+                'Nombre d\'œuvres': artwork_ids.length,
+                'Instructions': special_instructions || 'Aucune',
+                'Date': new Date().toLocaleString('fr-FR'),
+              }
+            )
+          } catch (notifErr) {
+            console.warn('[Delivery] Admin notification failed:', notifErr.message)
+          }
+
+          return res.status(201).json({
+            success: true,
+            data,
+            message: 'Delivery request created successfully',
+          })
+        } catch (err) {
+          console.error('[Delivery Request Exception]', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // PAYMENT WEBHOOK ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'payments') {
+      // POST /api/payments/webhook — Handle payment notifications (PayDunya, Stripe)
+      if (req.method === 'POST' && s1 === 'webhook') {
+        try {
+          const { transaction_id, status, amount, user_id, type, currency } = req.body
+
+          if (!transaction_id || !status || !amount) {
+            return res.status(400).json({
+              error: 'Missing required fields: transaction_id, status, amount',
+            })
+          }
+
+          // Log transaction
+          const { data, error } = await supabaseAdmin
+            .from('transactions')
+            .insert({
+              transaction_id,
+              user_id,
+              amount,
+              currency: currency || 'XOF',
+              type: type || 'purchase',
+              status,
+              metadata: req.body,
+              created_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (error) {
+            console.error('[Payment Webhook Error]', error)
+            return res.status(500).json({ error: error.message })
+          }
+
+          // Only notify admin for successful payments (non-blocking)
+          if (status === 'success') {
+            try {
+              const { data: userData } = await supabaseAdmin
+                .from('users')
+                .select('name, email, role')
+                .eq('id', user_id)
+                .single()
+
+              await sendAdminNotification(
+                '💳 Nouveau paiement reçu',
+                `Un paiement a été traité avec succès sur la plateforme.`,
+                {
+                  'Montant': `${amount} ${currency || 'XOF'}`,
+                  'Type': type || 'Achat',
+                  'Client': userData?.name || userData?.email || 'Inconnu',
+                  'Rôle Client': userData?.role || 'buyer',
+                  'Transaction ID': transaction_id,
+                  'Date': new Date().toLocaleString('fr-FR'),
+                }
+              )
+            } catch (notifErr) {
+              console.warn('[Payment] Admin notification failed:', notifErr.message)
+            }
+          }
+
+          return res.status(201).json({
+            success: true,
+            data,
+            message: 'Payment webhook processed',
+          })
+        } catch (err) {
+          console.error('[Payment Webhook Exception]', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // NUMERISATION ROUTE
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'numerisation' && (s1 === 'my' || req.method === 'GET')) {
