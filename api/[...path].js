@@ -277,10 +277,25 @@ export default async function handler(req, res) {
           artist_id,
           user_id,
           category,
-          limit = 300,
+          limit = 50, // ✅ CHANGED: Default 300 → 50 (prevent unfiltered queries from returning massive data)
         } = req.query
 
-        // DEBUG: Log the query parameters to catch filtering issues
+        // ✅ VALIDATION: If artist_id or user_id missing but user is artist/buyer, return empty
+        // This prevents accidentally exposing all artworks
+        const isFilteredRequest = artist_id || user_id || status || category
+        if (!isFilteredRequest && limit > 100) {
+          console.warn('[GET /api/artworks] Unfiltered request with large limit blocked:', {
+            limit,
+            hasParams: { artist_id: !!artist_id, user_id: !!user_id, status: !!status },
+          })
+          return res.status(200).json({
+            success: true,
+            artworks: [],
+            count: 0,
+            note: 'Unfiltered requests must specify artist_id, user_id, status, or category',
+          })
+        }
+
         console.log('[GET /api/artworks] Query params:', {
           artist_id,
           user_id,
@@ -288,6 +303,7 @@ export default async function handler(req, res) {
           for_sale,
           category,
           limit,
+          isFiltered: isFilteredRequest,
         })
 
         // ✅ CRITICAL FIX: Build query with filters first, THEN select with relations
