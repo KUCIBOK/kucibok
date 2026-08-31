@@ -28,59 +28,14 @@ export function ClientProvider({ children }) {
   const [state, setState] = useState(initialState)
   const { makeToast } = useToast()
 
-  // ✅ Load clients according to user role
+  // ⚠️ TEMPORARILY DISABLED: ClientContext causes 0→300 jump bug
+  // The issue: This useEffect triggers during auth/profile loading, which causes
+  // ArtworkContext to reload with wrong filters, jumping from 0 to 300 artworks.
+  // TODO: Fix the root cause (likely race condition in AuthContext or ArtworkContext)
   useEffect(() => {
-    const loadClients = async () => {
-      if (!user) return
-
-      setState((prev) => ({ ...prev, loading: true, error: null }))
-
-      try {
-        if (user.role === 'admin') {
-          // Admin: load all clients
-          const allClients = await getAllClients()
-          if (allClients?.error) {
-            setState((prev) => ({
-              ...prev,
-              loading: false,
-              error: allClients.error,
-            }))
-          } else {
-            setState((prev) => ({
-              ...prev,
-              clients: allClients || [],
-              loading: false,
-            }))
-          }
-        }
-
-        if (user.role === 'artist') {
-          // Artist: load their own clients
-          const artistClients = await getClientsByArtist()
-          if (artistClients?.error) {
-            setState((prev) => ({
-              ...prev,
-              loading: false,
-              error: artistClients.error,
-            }))
-          } else {
-            setState((prev) => ({
-              ...prev,
-              artistClients: artistClients || [],
-              loading: false,
-            }))
-          }
-        }
-      } catch (error) {
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          error: error.message,
-        }))
-      }
-    }
-
-    loadClients()
+    // Placeholder — clients feature disabled temporarily
+    // Routes exist but loading is disabled to prevent cascading effects
+    return
   }, [user?._id, user?.role])
 
   const addClientCtx = useCallback(async (payload) => {
