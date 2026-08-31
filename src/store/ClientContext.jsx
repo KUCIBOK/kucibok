@@ -28,28 +28,55 @@ export function ClientProvider({ children }) {
   const [state, setState] = useState(initialState)
   const { makeToast } = useToast()
 
-  // ❌ DISABLED: Load clients route — /api/clients/all doesn't exist yet
-  // Routes to implement: GET /api/clients/all, POST /api/clients/add, etc.
-  // TODO: Implement backend routes for clients management
+  // ✅ Load clients according to user role
   useEffect(() => {
     const loadClients = async () => {
       if (!user) return
 
-      setState((prev) => ({ ...prev, loading: false, error: null }))
+      setState((prev) => ({ ...prev, loading: true, error: null }))
 
       try {
-        // Routes not yet implemented — placeholder only
-        // if (user.role === 'admin') {
-        //   const allClients = await getAllClients()
-        //   if (allClients?.error) { ... }
-        // }
-        // if (user.role === 'artist') {
-        //   const artistClients = await getClientsByArtist()
-        //   if (artistClients?.error) { ... }
-        // }
+        if (user.role === 'admin') {
+          // Admin: load all clients
+          const allClients = await getAllClients()
+          if (allClients?.error) {
+            setState((prev) => ({
+              ...prev,
+              loading: false,
+              error: allClients.error,
+            }))
+          } else {
+            setState((prev) => ({
+              ...prev,
+              clients: allClients || [],
+              loading: false,
+            }))
+          }
+        }
+
+        if (user.role === 'artist') {
+          // Artist: load their own clients
+          const artistClients = await getClientsByArtist()
+          if (artistClients?.error) {
+            setState((prev) => ({
+              ...prev,
+              loading: false,
+              error: artistClients.error,
+            }))
+          } else {
+            setState((prev) => ({
+              ...prev,
+              artistClients: artistClients || [],
+              loading: false,
+            }))
+          }
+        }
       } catch (error) {
-        // Silent fail
-        console.warn('[ClientContext] Clients feature not yet implemented', error?.message)
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: error.message,
+        }))
       }
     }
 

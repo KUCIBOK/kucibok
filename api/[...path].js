@@ -2137,6 +2137,191 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, data: [] })
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // CLIENTS ROUTES (CRM for artists & advisors)
+    // ─────────────────────────────────────────────────────────────
+    if (s0 === 'clients') {
+      const auth = checkAuth(req)
+      if (!auth) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+
+      // GET /api/clients/ — Get all clients (admin only)
+      if (s1 === '' && req.method === 'GET') {
+        try {
+          const { data: allClients, error } = await supabaseAdmin
+            .from('clients')
+            .select('*')
+            .order('created_at', { ascending: false })
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({ clients: allClients || [] })
+        } catch (err) {
+          console.error('[Clients] GET error:', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // GET /api/clients/all — Get clients for current artist/user
+      if (s1 === 'all' && req.method === 'GET') {
+        try {
+          const { data: userClients, error } = await supabaseAdmin
+            .from('clients')
+            .select('*')
+            .eq('user_id', auth.sub)
+            .order('created_at', { ascending: false })
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({ clients: userClients || [] })
+        } catch (err) {
+          console.error('[Clients] GET /all error:', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // POST /api/clients/add — Add a new client
+      if (s1 === 'add' && req.method === 'POST') {
+        try {
+          const { nom, prenom, email, telephone, ville, notes } = req.body
+
+          const { data: newClient, error } = await supabaseAdmin
+            .from('clients')
+            .insert([
+              {
+                user_id: auth.sub,
+                name: `${nom || ''} ${prenom || ''}`.trim() || email,
+                email,
+                telephone: telephone || null,
+                country: ville || null, // Store city in country field for now
+                notes: notes || null,
+              },
+            ])
+            .select()
+            .single()
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(201).json({ client: newClient })
+        } catch (err) {
+          console.error('[Clients] POST /add error:', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // PUT /api/clients/update/:id — Update a client
+      if (s1 === 'update' && s2 && req.method === 'PUT') {
+        try {
+          const clientId = s2
+          const { nom, prenom, email, telephone, ville, notes } = req.body
+
+          const { data: updated, error } = await supabaseAdmin
+            .from('clients')
+            .update({
+              name: `${nom || ''} ${prenom || ''}`.trim() || email,
+              email,
+              telephone: telephone || null,
+              country: ville || null,
+              notes: notes || null,
+            })
+            .eq('id', clientId)
+            .eq('user_id', auth.sub) // Ensure user can only update their own clients
+            .select()
+            .single()
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          if (!updated) {
+            return res.status(404).json({ error: 'Client not found' })
+          }
+
+          return res.status(200).json({ client: updated })
+        } catch (err) {
+          console.error('[Clients] PUT /update error:', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // DELETE /api/clients/delete/:id — Delete a client
+      if (s1 === 'delete' && s2 && req.method === 'DELETE') {
+        try {
+          const clientId = s2
+
+          // Verify ownership first
+          const { data: client, error: fetchError } = await supabaseAdmin
+            .from('clients')
+            .select('user_id')
+            .eq('id', clientId)
+            .single()
+
+          if (fetchError || !client || client.user_id !== auth.sub) {
+            return res.status(403).json({ error: 'Unauthorized' })
+          }
+
+          const { error } = await supabaseAdmin
+            .from('clients')
+            .delete()
+            .eq('id', clientId)
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({ success: true })
+        } catch (err) {
+          console.error('[Clients] DELETE error:', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // POST /api/clients/upload — Upload clients from CSV
+      if (s1 === 'upload' && req.method === 'POST') {
+        try {
+          // Parse CSV from form data
+          // For now, return a placeholder
+          return res.status(501).json({ error: 'CSV upload not yet implemented' })
+        } catch (err) {
+          console.error('[Clients] POST /upload error:', err.message)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // LOGGING ROUTE
+    // ─────────────────────────────────────────────────────────────
+    if (s0 === 'log' && req.method === 'POST') {
+      try {
+        const { level = 'info', message, data, page_url } = req.body
+
+        // Frontend logging endpoint (non-critical)
+        console.log(`[Frontend Log] ${level.toUpperCase()}: ${message}`, {
+          data,
+          page_url,
+          timestamp: new Date().toISOString(),
+        })
+
+        // Optionally store in audit log table if needed
+        // const { error } = await supabaseAdmin
+        //   .from('audit_logs')
+        //   .insert([{ action: 'LOG', table_name: 'frontend', ... }])
+
+        return res.status(200).json({ success: true })
+      } catch (err) {
+        console.error('[Logging] Error:', err.message)
+        return res.status(500).json({ error: err.message })
+      }
+    }
+
     if (s0 === 'health') {
       return res.status(200).json({
         status: 'ok',
