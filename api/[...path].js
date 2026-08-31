@@ -2322,6 +2322,128 @@ export default async function handler(req, res) {
       }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // AUDIT ENDPOINT — Deep diagnostic for 0→300 jump bug
+    // ─────────────────────────────────────────────────────────────
+    if (s0 === 'audit-thugmoc' && req.method === 'GET') {
+      try {
+        const { email = 'thugmoc@gmail.com' } = req.query
+
+        console.log(`[Audit] Deep diagnostic for: ${email}`)
+
+        // Find user
+        const { data: users } = await supabaseAdmin.auth.admin.listUsers()
+        const user = users?.users?.find(u => u.email === email)
+
+        if (!user) {
+          return res.status(404).json({ error: `User not found: ${email}` })
+        }
+
+        // Find artist
+        const { data: artist } = await supabaseAdmin
+          .from('artists')
+          .select('*')
+          .eq('user_id', user.id)
+          .single()
+
+        // Count artworks by filters
+        const { count: totalArtworks } = await supabaseAdmin
+          .from('artworks')
+          .select('*', { count: 'exact', head: true })
+
+        let byArtistId = 0
+        if (artist?.id) {
+          const { count } = await supabaseAdmin
+            .from('artworks')
+            .select('*', { count: 'exact', head: true })
+            .eq('artist_id', artist.id)
+          byArtistId = count
+        }
+
+        const { count: byUserId } = await supabaseAdmin
+          .from('artworks')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+
+        const { count: byStatusApproved } = await supabaseAdmin
+          .from('artworks')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'approved')
+
+        const { count: byStatusNull } = await supabaseAdmin
+          .from('artworks')
+          .select('*', { count: 'exact', head: true })
+          .is('status', null)
+
+        // First 10 artworks for artist
+        let firstArtworks = []
+        if (artist?.id) {
+          const { data: artworks } = await supabaseAdmin
+            .from('artworks')
+            .select('id, kucibok_id, title, artist_id, status, created_at')
+            .eq('artist_id', artist.id)
+            .order('created_at', { ascending: false })
+            .limit(10)
+          firstArtworks = artworks || []
+        }
+
+        // Simulate API call
+        let simulated = []
+        if (artist?.id) {
+          const { data: sim } = await supabaseAdmin
+            .from('artworks')
+            .select('id, kucibok_id, title, artist_id, status')
+            .eq('artist_id', artist.id)
+            .limit(350)
+          simulated = sim || []
+        }
+
+        console.log('[Audit] Results:', {
+          email,
+          userId: user.id,
+          artistId: artist?.id,
+          byArtistId,
+          simulatedCount: simulated.length,
+        })
+
+        return res.status(200).json({
+          success: true,
+          email,
+          user_id: user.id,
+          artist_id: artist?.id || null,
+          counts: {
+            total_artworks: totalArtworks,
+            by_artist_id: byArtistId,
+            by_user_id: byUserId,
+            by_status_approved: byStatusApproved,
+            by_status_null: byStatusNull,
+          },
+          first_10_artworks: firstArtworks.map(a => ({
+            kucibok_id: a.kucibok_id || a.id.substring(0, 8),
+            title: a.title,
+            artist_id: a.artist_id,
+            status: a.status || 'NULL',
+          })),
+          api_simulation: {
+            would_return: simulated.length,
+            first_artwork: simulated[0] ? {
+              kucibok_id: simulated[0].kucibok_id,
+              artist_id: simulated[0].artist_id,
+              matches_filter: simulated[0].artist_id === artist?.id ? 'YES ✓' : 'NO ✗',
+            } : null,
+          },
+          diagnosis: {
+            expected: byArtistId,
+            actually_returned: simulated.length,
+            bug_is_present: simulated.length !== byArtistId ? true : false,
+          },
+        })
+      } catch (error) {
+        console.error('[Audit Error]', error)
+        return res.status(500).json({ error: error.message })
+      }
+    }
+
     if (s0 === 'health') {
       return res.status(200).json({
         status: 'ok',
