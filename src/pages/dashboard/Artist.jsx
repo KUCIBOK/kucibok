@@ -69,7 +69,8 @@ export default function Artist() {
       category: td.categories.clientsAndComms,
       icon: <Users className="w-4 h-4" />,
       items: [
-        { name: td.items.clients, icon: <Users className="w-4 h-4" />, index: 3 },
+        // ❌ DISABLED: /api/clients/all route doesn't exist (TODO: implement backend routes)
+        // { name: td.items.clients, icon: <Users className="w-4 h-4" />, index: 3 },
         { name: td.items.notifications, icon: <Bell className="w-4 h-4" />, index: 6 },
         { name: td.items.support, icon: <MessageSquare className="w-4 h-4" />, index: 7 },
       ],
