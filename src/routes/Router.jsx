@@ -127,7 +127,6 @@ import { CategoryProvider } from '../store/CategoryStore'
 import { CollectionProvider } from '../store/CollectionStore'
 import { DeliveryContextProvider } from '../store/DeliveryStore'
 import { NumerisationProvider } from '../store/NumerisationStore'
-import { ClientProvider } from '../store/ClientContext'
 import { GalleryContextProvider } from '../store/GalleryContext'
 
 // AutoAuth component
@@ -372,11 +371,9 @@ export function Router() {
                         <CollectionProvider>
                           <DeliveryContextProvider>
                             <NumerisationProvider>
-                              <ClientProvider>
-                                <GalleryContextProvider>
-                                  <Outlet />
-                                </GalleryContextProvider>
-                              </ClientProvider>
+                              <GalleryContextProvider>
+                                <Outlet />
+                              </GalleryContextProvider>
                             </NumerisationProvider>
                           </DeliveryContextProvider>
                         </CollectionProvider>

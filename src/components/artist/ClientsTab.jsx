@@ -1,197 +1,30 @@
-import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react'
-import { Fragment, useEffect, useState } from 'react'
-import { useClients } from '../../store/ClientContext'
-import ImportFile from '../client/ImportFile'
-import AddClient from '../client/AddClient'
-import ClientActions from '../client/ClientActions'
+import { Users, Lock } from 'lucide-react'
+
+/**
+ * ClientsTab (Artist) ‚Äî DISABLED in Phase 0
+ *
+ * This component was using ClientContext which caused the 0‚Üí300 jump bug.
+ * The feature is temporarily disabled and will be reimplemented in Phase 5
+ * with proper state management (React Query).
+ *
+ * TODO: Reimplement with React Query in Phase 5
+ */
 
 export const ClientsTab = ({ user }) => {
-  const {
-    artistClients: clients,
-    loading,
-    addClient: addClientToStore,
-    updateClient: updateClientInStore,
-    deleteClient: deleteClientFromStore,
-    uploadClients: uploadClientsToStore,
-  } = useClients()
-  const [filteredClients, setFilteredClients] = useState([])
-  const [currentSet, setCurrentSet] = useState([])
-  const [search, setSearch] = useState('')
-  const [showAddForm, setShowAddForm] = useState(false)
-
-  // Initialiser les clients filtrÈs quand les clients changent
-  useEffect(() => {
-    if (clients.length > 0) {
-      const sortedClients = [...clients].sort(
-        (a, b) => new Date(b.created_at) - new Date(a.created_at)
-      )
-      setFilteredClients(sortedClients)
-      setCurrentSet(sortedClients.slice(0, 40))
-    }
-  }, [clients])
-
-  // Gestion de la recherche
-  useEffect(() => {
-    const query = search.trim().toLowerCase()
-    let filtered = clients
-    if (query !== '') {
-      filtered = clients.filter((client) => {
-        const nomMatch = client.nom?.toLowerCase().includes(query)
-        const prenomMatch = client.prenom?.toLowerCase().includes(query)
-        const emailMatch = client.email?.toLowerCase().includes(query)
-        const villeMatch = client.ville?.toLowerCase().includes(query)
-        return nomMatch || prenomMatch || emailMatch || villeMatch
-      })
-    }
-    setFilteredClients(filtered)
-    setCurrentSet(filtered.slice(0, 40))
-  }, [search, clients])
-
-  const handleAddClient = async (clientData) => {
-    const result = await addClientToStore(clientData)
-    if (!result.error) {
-      setShowAddForm(false)
-      return result
-    }
-    return result
-  }
-
-  const handleClientUpdated = async (id, clientData) => {
-    const result = await updateClientInStore(id, clientData)
-    return result
-  }
-
-  const handleClientDeleted = async (deletedClientId) => {
-    const result = await deleteClientFromStore(deletedClientId)
-    return result
-  }
-
-  const handleCSVUpload = async (file) => {
-    const result = await uploadClientsToStore(file)
-    return result
-  }
-
-  const handlePrevPage = () => {
-    if (currentSet[0] !== filteredClients[0]) {
-      const startIndex = filteredClients.indexOf(currentSet[0]) - 40
-      setCurrentSet(filteredClients.slice(startIndex, startIndex + 40))
-    }
-  }
-
-  const handleNextPage = () => {
-    const lastIndex = filteredClients.indexOf(currentSet[currentSet.length - 1])
-    if (lastIndex < filteredClients.length - 1) {
-      setCurrentSet(filteredClients.slice(lastIndex + 1, lastIndex + 41))
-    }
-  }
-
   return (
-    <div>
-      {/* Barre d'actions */}
-      <div className="mb-4 flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 flex items-center">
-          <input
-            type="text"
-            className="w-full rounded-s-md border-y border-s border-white/[0.06] bg-kcb-noir px-3 py-2 text-sm text-kcb-sable placeholder-kcb-pierre focus:outline-none"
-            placeholder="Rechercher un client par nom, prÈnom, email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <span className="rounded-e-md border-y border-e border-white/[0.06] bg-kcb-noir px-3 py-2.5 text-sm text-kcb-sable">
-            <Search className="w-4 h-4" />
-          </span>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="px-4 py-2 text-sm rounded-[4px] bg-kcb-or text-kcb-noir hover:bg-kcb-or/90 transition flex items-center gap-1"
-          >
-            <Plus className="h-4 w-4" />
-            Ajouter un client
-          </button>
-          <ImportFile onUpload={handleCSVUpload} />
-        </div>
+    <div className="flex items-center justify-center py-24">
+      <div className="text-center">
+        <Lock className="w-16 h-16 text-kcb-pierre mx-auto mb-4 opacity-50" />
+        <h3 className="text-xl font-bold text-white mb-2">Feature d√©sactiv√©e</h3>
+        <p className="text-kcb-pierre mb-1">
+          La gestion des clients a √©t√© temporairement d√©sactiv√©e
+        </p>
+        <p className="text-sm text-kcb-pierre">
+          ‚ÑπÔ∏è R√©impl√©mentation pr√©vue en Phase 5 avec React Query
+        </p>
       </div>
-
-      {/* Tableau des clients */}
-      <div className="overflow-x-auto bg-kcb-noir border border-white/[0.06] rounded-[4px] px-4 py-4 shadow-sm">
-        {currentSet?.length >= 1 ? (
-          <table className="w-full text-xs text-kcb-sable">
-            <thead>
-              <tr className="border-b border-white/[0.06]">
-                <th className="font-semibold py-2 text-left">Nom</th>
-                <th className="font-semibold py-2 text-left">PrÈnom</th>
-                <th className="font-semibold py-2 text-left">Email</th>
-                <th className="font-semibold py-2 text-left">TÈlÈphone</th>
-                <th className="font-semibold py-2 text-left">Ville</th>
-                <th className="font-semibold py-2 text-left">AjoutÈ le</th>
-                <th className="font-semibold py-2 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentSet?.map((client, index) => (
-                <Fragment key={index}>
-                  <tr className="border-b border-white/[0.06] hover:bg-white/[0.04] transition">
-                    <td className="py-2 font-semibold text-white">{client.nom}</td>
-                    <td className="py-2 text-kcb-sable">{client.prenom}</td>
-                    <td className="py-2 text-kcb-sable">{client.email}</td>
-                    <td className="py-2 text-kcb-pierre">{client.telephone || '-'}</td>
-                    <td className="py-2 text-kcb-pierre">{client.ville || '-'}</td>
-                    <td className="py-2 text-kcb-pierre">
-                      {new Date(client.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-2">
-                      <ClientActions
-                        client={client}
-                        onClientUpdated={handleClientUpdated}
-                        onClientDeleted={handleClientDeleted}
-                      />
-                    </td>
-                  </tr>
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="text-center py-16 border border-white/[0.06] border-dashed rounded-[4px] w-full bg-white/[0.04]">
-            <h3 className="font-medium text-base text-kcb-pierre mb-1">Aucun client trouvÈ</h3>
-            <p className="text-sm text-kcb-pierre">
-              {search ? 'Essayez une autre recherche' : 'Commencez par ajouter un client'}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Pagination */}
-      {filteredClients.length > 5 && (
-        <div className="flex justify-end gap-2 mt-4">
-          <button
-            className="rounded-[4px] border border-white/[0.06] px-4 py-2 text-sm text-kcb-sable bg-transparent hover:bg-white/[0.08] transition"
-            onClick={handlePrevPage}
-            disabled={currentSet[0] === filteredClients[0]}
-          >
-            <ChevronLeft className="w-4 h-4 mr-1 inline-block" /> PrÈcÈdent
-          </button>
-          <span className="text-xs text-kcb-pierre flex items-center px-2">
-            Page {Math.floor(filteredClients.indexOf(currentSet[0]) / 40) + 1} /{' '}
-            {Math.ceil(filteredClients.length / 40)}
-          </span>
-          <button
-            className="rounded-[4px] border border-white/[0.06] px-4 py-2 text-sm text-kcb-sable bg-transparent hover:bg-white/[0.08] transition"
-            onClick={handleNextPage}
-            disabled={
-              currentSet[currentSet.length - 1] === filteredClients[filteredClients.length - 1]
-            }
-          >
-            Suivant <ChevronRight className="w-4 h-4 ml-1 inline-block" />
-          </button>
-        </div>
-      )}
-
-      {/* Formulaire d'ajout */}
-      {showAddForm && (
-        <AddClient onAddClient={handleAddClient} onClose={() => setShowAddForm(false)} />
-      )}
     </div>
   )
 }
+
+export default ClientsTab

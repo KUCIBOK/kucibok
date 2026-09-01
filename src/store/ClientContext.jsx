@@ -28,14 +28,32 @@ export function ClientProvider({ children }) {
   const [state, setState] = useState(initialState)
   const { makeToast } = useToast()
 
-  // ⚠️ TEMPORARILY DISABLED: ClientContext causes 0→300 jump bug
-  // The issue: This useEffect triggers during auth/profile loading, which causes
-  // ArtworkContext to reload with wrong filters, jumping from 0 to 300 artworks.
-  // TODO: Fix the root cause (likely race condition in AuthContext or ArtworkContext)
+  // ❌ DISABLED: Load clients route — /api/clients/all doesn't exist yet
+  // Routes to implement: GET /api/clients/all, POST /api/clients/add, etc.
+  // TODO: Implement backend routes for clients management
   useEffect(() => {
-    // Placeholder — clients feature disabled temporarily
-    // Routes exist but loading is disabled to prevent cascading effects
-    return
+    const loadClients = async () => {
+      if (!user) return
+
+      setState((prev) => ({ ...prev, loading: false, error: null }))
+
+      try {
+        // Routes not yet implemented — placeholder only
+        // if (user.role === 'admin') {
+        //   const allClients = await getAllClients()
+        //   if (allClients?.error) { ... }
+        // }
+        // if (user.role === 'artist') {
+        //   const artistClients = await getClientsByArtist()
+        //   if (artistClients?.error) { ... }
+        // }
+      } catch (error) {
+        // Silent fail
+        console.warn('[ClientContext] Clients feature not yet implemented', error?.message)
+      }
+    }
+
+    loadClients()
   }, [user?._id, user?.role])
 
   const addClientCtx = useCallback(async (payload) => {
