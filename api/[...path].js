@@ -312,7 +312,11 @@ export default async function handler(req, res) {
         const { data, error } = await supabaseAdmin.from('artworks').insert([body]).select()
 
         if (error) {
-          return res.status(500).json({ error: error.message })
+          console.error('[POST /api/artworks] Insert error:', error.message)
+          if (error.code === '23505') {
+            return res.status(409).json({ error: 'This artwork already exists' })
+          }
+          return res.status(500).json({ error: 'Failed to create artwork' })
         }
 
         return res.status(201).json({
@@ -365,7 +369,8 @@ export default async function handler(req, res) {
           .select()
 
         if (error) {
-          return res.status(500).json({ error: error.message })
+          console.error('[PUT /api/artworks/:id] Update error:', error.message)
+          return res.status(500).json({ error: 'Failed to update artwork' })
         }
 
         return res.status(200).json({
@@ -887,10 +892,22 @@ export default async function handler(req, res) {
 
       // GET /api/subscriptions/active/:user_id — Get active subscription
       if (req.method === 'GET' && s1 === 'active' && s2) {
+        // ✅ CRITICAL: Verify authentication
+        const authUser = await getAuthUser()
+        if (!authUser) return
+
+        // ✅ CRITICAL: Verify ownership - can only view own subscription
+        if (s2 !== authUser.id) {
+          return res.status(403).json({
+            error: 'Forbidden',
+            message: 'You can only view your own subscription'
+          })
+        }
+
         const { data, error } = await supabaseAdmin
           .from('subscriptions')
           .select('*')
-          .eq('user_id', s2)
+          .eq('user_id', authUser.id)
           .in('status', ['active', 'trial'])
           .order('created_at', { ascending: false })
           .limit(1)
@@ -898,7 +915,8 @@ export default async function handler(req, res) {
 
         if (error && error.code !== 'PGRST116') {
           // PGRST116 = no rows found
-          return res.status(500).json({ error: error.message })
+          console.error('[GET /api/subscriptions/active] Query error:', error.message)
+          return res.status(500).json({ error: 'Subscription query failed' })
         }
 
         return res.status(200).json({
@@ -1032,17 +1050,17 @@ export default async function handler(req, res) {
 
       // GET /api/shortlist — Get user's shortlist
       if (req.method === 'GET' && !s1) {
-        const { user_id } = req.query
+        // ✅ CRITICAL: Verify authentication
+        const authUser = await getAuthUser()
+        if (!authUser) return
 
-        if (!user_id) {
-          return res.status(400).json({ error: 'user_id query param is required' })
-        }
-
+        // ✅ CRITICAL: user_id from query is NO LONGER ACCEPTED
+        // Always use authenticated user's ID
         try {
           const { data, error } = await supabaseAdmin
             .from('shortlisted_artworks')
             .select('*, artworks(*)')
-            .eq('user_id', user_id)
+            .eq('user_id', authUser.id)
             .order('created_at', { ascending: false })
 
           if (error) {
@@ -1051,7 +1069,8 @@ export default async function handler(req, res) {
             if (error.code === 'PGRST116') {
               return res.status(200).json({ success: true, data: [], count: 0 })
             }
-            return res.status(500).json({ error: error.message, code: error.code })
+            // ✅ Don't leak database error codes to client
+            return res.status(500).json({ error: 'Failed to retrieve shortlist' })
           }
 
           return res.status(200).json({
@@ -1061,29 +1080,46 @@ export default async function handler(req, res) {
           })
         } catch (err) {
           console.error('[Shortlist Get Exception]', err.message)
-          return res.status(500).json({ error: err.message })
+          return res.status(500).json({ error: 'Internal server error' })
         }
       }
 
       // PATCH /api/shortlist/:artworkId — Update notes
       if (req.method === 'PATCH' && s1) {
-        const { user_id, notes } = req.body
+        // ✅ CRITICAL: Verify authentication
+        const authUser = await getAuthUser()
+        if (!authUser) return
 
-        if (!user_id || !s1) {
-          return res.status(400).json({ error: 'user_id and artworkId are required' })
+        // ✅ CRITICAL: user_id MUST come from auth token, NOT request body
+        // Attacker CANNOT forge user_id
+        const { notes } = req.body
+        const artworkId = s1
+
+        if (!artworkId) {
+          return res.status(400).json({ error: 'Missing artworkId' })
+        }
+
+        // ✅ Optional: Validate notes don't exceed 1000 characters
+        if (notes && typeof notes === 'string' && notes.length > 1000) {
+          return res.status(400).json({ error: 'Notes must be under 1000 characters' })
         }
 
         try {
           const { data, error } = await supabaseAdmin
             .from('shortlisted_artworks')
             .update({ notes: notes || '' })
-            .eq('user_id', user_id)
-            .eq('artwork_id', s1)
+            .eq('user_id', authUser.id)  // ✅ Use authenticated user, not from body
+            .eq('artwork_id', artworkId)
             .select()
             .single()
 
           if (error) {
-            return res.status(500).json({ error: error.message })
+            console.error('[PATCH /api/shortlist] Query error:', error.message)
+            // ✅ Don't leak database error codes
+            if (error.code === 'PGRST116') {
+              return res.status(404).json({ error: 'Artwork not found in shortlist' })
+            }
+            return res.status(500).json({ error: 'Failed to update notes' })
           }
 
           return res.status(200).json({
@@ -1092,8 +1128,8 @@ export default async function handler(req, res) {
             message: 'Notes updated',
           })
         } catch (err) {
-          console.error('[Shortlist Update Error]', err)
-          return res.status(500).json({ error: err.message })
+          console.error('[Shortlist Update Exception]', err.message)
+          return res.status(500).json({ error: 'Internal server error' })
         }
       }
     }
