@@ -8,6 +8,7 @@ import { respondJSON, respondError, checkAuth } from './_lib/response.js'
 import { requireAuth } from './_lib/auth.js'
 import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
+import DOMPurify from 'isomorphic-dompurify'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -89,8 +90,31 @@ export default async function handler(req, res) {
 
     // ✅ Helper function: Validate email
     const validateEmail = (email) => {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      return emailRegex.test(email)
+      // ✅ IMPROVED: RFC 5322 simplified email validation
+      // Prevents: test@test.x, @domain.com, user@.com, etc.
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/
+      if (!emailRegex.test(email)) return false
+
+      // Additional checks
+      if (email.length > 254) return false // RFC 5321
+      const [localPart, domain] = email.split('@')
+      if (localPart.length > 64) return false // Local part max 64 chars
+      if (localPart.startsWith('.') || localPart.endsWith('.')) return false
+      if (localPart.includes('..')) return false // Consecutive dots
+
+      return true
+    }
+
+    // ✅ Helper function: Sanitize HTML to prevent XSS
+    const sanitizeHtml = (html) => {
+      if (!html || typeof html !== 'string') return ''
+      // ✅ CRITICAL: Sanitize with DOMPurify on server-side
+      // Only allow safe tags: b, i, em, strong, p, br, a, ul, li
+      return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h2', 'h3'],
+        ALLOWED_ATTR: ['href', 'target', 'rel'],
+        KEEP_CONTENT: true,
+      })
     }
 
     // ✅ Helper function: Validate artwork data
@@ -309,6 +333,11 @@ export default async function handler(req, res) {
         // ✅ CRITICAL: Ensure user_id and artist_id are properly linked
         const body = { ...req.body, user_id: user.id, artist_id: artistId }
 
+        // ✅ CRITICAL: Sanitize HTML fields to prevent XSS
+        if (body.description) {
+          body.description = sanitizeHtml(body.description)
+        }
+
         const { data, error } = await supabaseAdmin.from('artworks').insert([body]).select()
 
         if (error) {
@@ -361,6 +390,11 @@ export default async function handler(req, res) {
         const body = { ...req.body }
         delete body.user_id
         delete body.artist_id
+
+        // ✅ CRITICAL: Sanitize HTML fields to prevent XSS
+        if (body.description) {
+          body.description = sanitizeHtml(body.description)
+        }
 
         const { data, error } = await supabaseAdmin
           .from('artworks')
