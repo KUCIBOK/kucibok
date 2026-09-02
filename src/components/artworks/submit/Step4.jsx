@@ -1,4 +1,4 @@
-import { useArtworkMutations } from '../../api/useArtworkMutationsQuery' /* ✨ React Query */
+import { useArtworkMutations } from '../../../api/useArtworkMutationsQuery'
 import { useNavigate } from 'react-router-dom'
 import { DataLoader } from '../../loaders/PageLoader'
 import DOMPurify from 'dompurify'

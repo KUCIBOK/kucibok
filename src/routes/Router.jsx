@@ -118,7 +118,8 @@ const OAuthCallback = lazy(() => import('../pages/auth/OAuthCallback'))
 
 // Context Providers/Store Imports
 import { AuthContextProvider } from '../store/AuthContext'
-import { ArtworksContextProvider } from '../store/ArtworkContext'
+// ✨ PHASE 3: Removed ArtworksContextProvider (→ React Query)
+// ✨ PHASE 3: Removed GalleryContextProvider (→ React Query)
 import { ArtistContextProvider } from '../store/ArtistContext'
 import { BlogContextProvider } from '../store/BlogContext'
 import { UserProvider } from '../store/UsersStore'
@@ -127,7 +128,6 @@ import { CategoryProvider } from '../store/CategoryStore'
 import { CollectionProvider } from '../store/CollectionStore'
 import { DeliveryContextProvider } from '../store/DeliveryStore'
 import { NumerisationProvider } from '../store/NumerisationStore'
-import { GalleryContextProvider } from '../store/GalleryContext'
 
 // AutoAuth component
 import { AutoAuth } from '../store/AutoAuth'
@@ -360,28 +360,25 @@ export function Router() {
             Tous les providers de contenu et dashboard montent ici.
             Ne s'initialisent PAS sur les pages auth/légales/redirections.
             ═══════════════════════════════════════════════════════════════ */}
+        {/* ✨ PHASE 3: Simplified provider hierarchy */}
         <Route
           element={
             <ArtistContextProvider>
-              <ArtworksContextProvider>
-                <BlogContextProvider>
-                  <UserProvider>
-                    <PlanProvider>
-                      <CategoryProvider>
-                        <CollectionProvider>
-                          <DeliveryContextProvider>
-                            <NumerisationProvider>
-                              <GalleryContextProvider>
-                                <Outlet />
-                              </GalleryContextProvider>
-                            </NumerisationProvider>
-                          </DeliveryContextProvider>
-                        </CollectionProvider>
-                      </CategoryProvider>
-                    </PlanProvider>
-                  </UserProvider>
-                </BlogContextProvider>
-              </ArtworksContextProvider>
+              <BlogContextProvider>
+                <UserProvider>
+                  <PlanProvider>
+                    <CategoryProvider>
+                      <CollectionProvider>
+                        <DeliveryContextProvider>
+                          <NumerisationProvider>
+                            <Outlet />
+                          </NumerisationProvider>
+                        </DeliveryContextProvider>
+                      </CollectionProvider>
+                    </CategoryProvider>
+                  </PlanProvider>
+                </UserProvider>
+              </BlogContextProvider>
             </ArtistContextProvider>
           }
         >
