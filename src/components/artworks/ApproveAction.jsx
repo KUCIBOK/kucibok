@@ -1,13 +1,13 @@
 import { Check, X } from 'lucide-react'
 import { memo, useState } from 'react'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useArtworkMutations } from '../../api/useArtworkMutationsQuery' /* ✨ React Query */
 import { useAuth } from '../../store/AuthContext'
 import { DataLoader } from '../loaders/PageLoader'
 import { ConfirmDialog } from '../ui'
 import { createLog } from '../../api/useLog'
 
 export const ApproveAction = memo(function ApproveAction({ artwork }) {
-  const { approveArtwork } = useArtworks()
+  const { approveArtwork } = useArtworkMutations() /* ✨ React Query */
   const { user: adminUser } = useAuth()
   const [state, setState] = useState({
     loading: false,

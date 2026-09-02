@@ -7,7 +7,7 @@ import { useAuth } from '../../store/AuthContext'
 import { useArtist } from '../../store/ArtistContext'
 import { useCategoryStore } from '../../store/CategoryStore'
 import { useCollections } from '../../store/CollectionStore'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useArtworkMutations } from '../../api/useArtworkMutationsQuery' /* ✨ React Query */
 
 export function CreateCollection() {
   const [state, setState] = useState(false)
@@ -44,7 +44,7 @@ function AddCollectionModal({ closeModal }) {
   })
   const { myArtists } = useArtist()
   const { addCollection } = useCollections()
-  const { submitArtwork } = useArtworks()
+  const { submitArtwork } = useArtworkMutations() /* ✨ React Query */
   const artworkModel = {
     title: '',
     description: '',

@@ -1,11 +1,11 @@
-import { useArtworks } from '../../../store/ArtworkContext'
+import { useArtworkMutations } from '../../api/useArtworkMutationsQuery' /* ✨ React Query */
 import { useNavigate } from 'react-router-dom'
 import { DataLoader } from '../../loaders/PageLoader'
 import DOMPurify from 'dompurify'
 
 export const Step4 = ({ formState, setFormState, user, profile }) => {
   const navigate = useNavigate()
-  const { submitArtwork } = useArtworks()
+  const { submitArtwork } = useArtworkMutations() /* ✨ React Query */
   const submit = async () => {
     try {
       setFormState({ ...formState, loading: true })

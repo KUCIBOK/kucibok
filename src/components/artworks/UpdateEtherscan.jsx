@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useArtworkMutations } from '../../api/useArtworkMutationsQuery' /* ✨ React Query */
 import { Pen } from 'lucide-react'
 import { Modal, Input, Button, toast } from '../ui'
 import { DataLoader } from '../loaders/PageLoader'
@@ -48,7 +48,7 @@ function EtherscanModal({ artwork, closeModal }) {
     loading: false,
     etherscan: '',
   })
-  const { modifyEtherscan } = useArtworks()
+  const { modifyEtherscan } = useArtworkMutations() /* ✨ React Query */
 
   const handleSubmit = async (e) => {
     e.preventDefault()

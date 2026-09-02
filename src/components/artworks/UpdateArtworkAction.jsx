@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useArtworkMutations } from '../../api/useArtworkMutationsQuery' /* ✨ React Query */
 import { Camera, PenBox } from 'lucide-react'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
@@ -32,7 +32,7 @@ export function UpdateArtworkAction({ artwork }) {
 }
 
 function UpdateArtworkModal({ artwork, closeModal }) {
-  const { updateArtwork } = useArtworks()
+  const { updateArtwork } = useArtworkMutations() /* ✨ React Query */
   const { categories } = useCategoryStore()
   const [state, setState] = useState({
     ...artwork,
