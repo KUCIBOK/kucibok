@@ -17,7 +17,8 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import { getArtworkById } from '../api/useArtworks'
 import { useToast } from '../store/ToastContext'
-import { useAuth } from '../store/AuthContext'
+import { useAuth } from '../store/AuthContext' // ⏳ Kept for now (fallback)
+import { useAuthUser } from '../api/useAuthUser' // ✨ New: React Query
 import { useArtworks } from '../store/ArtworkContext'
 import { getArtistById } from '../api/useArtists'
 import { Skeleton, SkeletonCard } from '../components/ui'
@@ -55,7 +56,7 @@ export default function Artwork() {
   const [certLoading, setCertLoading] = useState(false)
   const { id } = useParams()
   const { makeToast } = useToast()
-  const { user } = useAuth()
+  const { data: user } = useAuthUser() // ✨ Migrated to React Query
   const { forSale } = useArtworks()
   const { pathname } = useLocation()
   const navigate = useNavigate()
