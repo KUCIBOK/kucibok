@@ -5,6 +5,7 @@ import { ToastProvider } from './components/ui/Toast'
 import { useEffect, useState } from 'react'
 import { createVisitor } from './api/useVisitor'
 import { LangProvider } from './store/LangContext'
+import { QueryProvider } from './store/QueryProvider'
 
 // P1-SEC-016 — Clé de stockage du consentement RGPD
 const CONSENT_KEY = 'kcb_analytics_consent'
@@ -103,15 +104,17 @@ function AppContent() {
 
   return (
     <>
-      <LangProvider>
-        <ToastProvider>
-          <ToastContextProvider>
-            <BrowserRouter>
-              <Router />
-            </BrowserRouter>
-          </ToastContextProvider>
-        </ToastProvider>
-      </LangProvider>
+      <QueryProvider>
+        <LangProvider>
+          <ToastProvider>
+            <ToastContextProvider>
+              <BrowserRouter>
+                <Router />
+              </BrowserRouter>
+            </ToastContextProvider>
+          </ToastProvider>
+        </LangProvider>
+      </QueryProvider>
 
       {/* P1-SEC-016 — Bandeau de consentement RGPD (affiché tant que l'utilisateur n'a pas décidé) */}
       {consent === null && (
