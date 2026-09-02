@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { getAllSubscriptions } from '../../api/useSubscriptions'
-import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
+import { useMyArtworks, usePendingArtworks } from '../../api/useDashboardArtworksQuery' /* ✨ React Query */
 import { useUsersContext } from '../../store/UsersStore'
 import {
   AlertTriangle,
