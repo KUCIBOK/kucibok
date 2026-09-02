@@ -1,4 +1,4 @@
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import { ArtistTable } from '../artists/ArtistTable'
 
 export function ArtistTab() {

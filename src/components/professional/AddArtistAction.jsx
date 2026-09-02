@@ -1,7 +1,7 @@
 import { Camera, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../store/AuthContext'
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
 import { Modal, Input, Button, toast } from '../ui'

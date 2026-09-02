@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Palette } from 'lucide-react'
-import { useArtist } from '../../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import { ArtistList } from '../../artists/ArtistsList'
 
 export default function FeaturedArtists() {

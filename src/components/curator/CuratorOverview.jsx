@@ -16,7 +16,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import { KPICard, SkeletonKPI } from '../ui'
 import { useT } from '../../i18n'
 import { curatorT } from '../../i18n/curator'

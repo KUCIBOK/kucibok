@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { useAuth } from '../../../store/AuthContext'
-import { useArtist } from '../../../store/ArtistContext'
+import { useArtist } from '../../../api/useArtistContextQuery'
 
 export const Step3 = memo(function Step3({ formState, setFormState }) {
   const { user } = useAuth()

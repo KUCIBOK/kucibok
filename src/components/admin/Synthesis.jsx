@@ -13,7 +13,7 @@ import {
   UserCheck,
   Users,
 } from 'lucide-react'
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import { getAllVisitors } from '../../api/useVisitor'
 import { exportExcelData } from '../../api/useUsers'
 import { KPICard, Button, SkeletonKPI, Skeleton, EmptyState } from '../ui'

@@ -1,7 +1,7 @@
 import { AlertCircle, Camera, PenBox, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DataLoader } from '../loaders/PageLoader'
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
 

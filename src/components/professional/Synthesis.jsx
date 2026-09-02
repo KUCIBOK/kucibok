@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { fmtMoney } from '../../lib/currency'
 import { useAuth } from '../../store/AuthContext'
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { AddArtistAction } from './AddArtistAction'
 import { Link } from 'react-router-dom'

@@ -20,7 +20,7 @@ import {
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import { cancelMySubscription } from '../../api/useSubscriptions'
 
 // Plan features limits

@@ -122,7 +122,7 @@ import { AuthContextProvider } from '../store/AuthContext'
 // ✨ PHASE 3: Removed GalleryContextProvider (→ React Query)
 // ✨ PHASE 3B: Removed BlogContextProvider (→ React Query)
 // ✨ PHASE 3B: Removed PlanProvider (→ React Query)
-import { ArtistContextProvider } from '../store/ArtistContext'
+// ✨ PHASE 3C: Removed ArtistContextProvider (→ React Query)
 import { UserProvider } from '../store/UsersStore'
 import { CategoryProvider } from '../store/CategoryStore'
 import { CollectionProvider } from '../store/CollectionStore'
@@ -360,22 +360,20 @@ export function Router() {
             Tous les providers de contenu et dashboard montent ici.
             Ne s'initialisent PAS sur les pages auth/légales/redirections.
             ═══════════════════════════════════════════════════════════════ */}
-        {/* ✨ PHASE 3B: Simplified provider hierarchy (removed Blog, Plan) */}
+        {/* ✨ PHASE 3C: Simplified provider hierarchy (removed Artist, Blog, Plan) */}
         <Route
           element={
-            <ArtistContextProvider>
-              <UserProvider>
-                <CategoryProvider>
-                  <CollectionProvider>
-                    <DeliveryContextProvider>
-                      <NumerisationProvider>
-                        <Outlet />
-                      </NumerisationProvider>
-                    </DeliveryContextProvider>
-                  </CollectionProvider>
-                </CategoryProvider>
-              </UserProvider>
-            </ArtistContextProvider>
+            <UserProvider>
+              <CategoryProvider>
+                <CollectionProvider>
+                  <DeliveryContextProvider>
+                    <NumerisationProvider>
+                      <Outlet />
+                    </NumerisationProvider>
+                  </DeliveryContextProvider>
+                </CollectionProvider>
+              </CategoryProvider>
+            </UserProvider>
           }
         >
           {/* Root now displays GlobalPage (same as /global) */}

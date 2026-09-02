@@ -17,7 +17,7 @@ import {
   AlertCircle,
   Mail,
 } from 'lucide-react'
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 
 // Badge de vérification : utilise kucibok_id comme indicateur principal de certification
 function VerifiedBadge({ artist }) {

@@ -1,6 +1,6 @@
 import { Clock, Image, TrendingUp, Truck, Users } from 'lucide-react'
 import { RewardsWidget } from './RewardsWidget'
-import { useArtist } from '../../store/ArtistContext'
+import { useArtist } from '../../api/useArtistContextQuery'
 import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { Link } from 'react-router-dom'
 import { ArtistTable } from '../artists/ArtistTable'
