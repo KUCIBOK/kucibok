@@ -1,7 +1,7 @@
 import { Helmet } from 'react-helmet'
 import { useEffect } from 'react'
 import { BlogPostsList } from '../components/blog/BlogPostsList'
-import { useBlog } from '../store/BlogContext'
+import { useBlogPosts } from '../api/useBlogQuery' /* ✨ React Query */
 import RevealOnScroll from '../components/landing/RevealOnScroll'
 import SectionLabel from '../components/landing/SectionLabel'
 
@@ -26,7 +26,7 @@ function BlogSkeleton() {
 }
 
 export default function Blog() {
-  const { blogPosts, loading } = useBlog()
+  const { data: blogPosts = [], isLoading: loading } = useBlogPosts() /* ✨ React Query */
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [])

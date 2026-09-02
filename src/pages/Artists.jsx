@@ -1,6 +1,6 @@
 import { Helmet } from 'react-helmet'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useArtist } from '../store/ArtistContext'
+import { useArtists } from '../api/useArtistsQuery' /* ✨ React Query */
 
 function shuffleArray(arr) {
   const a = [...arr]
@@ -17,7 +17,7 @@ import RevealOnScroll from '../components/landing/RevealOnScroll'
 import SectionLabel from '../components/landing/SectionLabel'
 
 export default function Artists() {
-  const { artists, loading: contextLoading } = useArtist()
+  const { data: artists = [], isLoading: contextLoading } = useArtists() /* ✨ React Query */
   // Deduplicate by _id then shuffle randomly (different order each refresh)
   const sortedArtists = useMemo(() => {
     const seen = new Set()
