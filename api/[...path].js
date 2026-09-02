@@ -2521,6 +2521,52 @@ export default async function handler(req, res) {
       })
     }
 
+    // ✨ GET /api/admin/stats — Real-time admin statistics
+    if (s0 === 'admin' && s1 === 'stats' && req.method === 'GET') {
+      try {
+        // Require admin auth
+        const user = await checkAuth(req)
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
+        // Query counts from Supabase
+        const [usersRes, artworksRes, subscriptionsRes] = await Promise.all([
+          supabaseAdmin.from('users').select('role', { count: 'exact' }),
+          supabaseAdmin.from('artworks').select('status', { count: 'exact' }),
+          supabaseAdmin.from('subscriptions').select('status', { count: 'exact' }),
+        ])
+
+        // Calculate statistics
+        const usersData = usersRes.data || []
+        const artworksData = artworksRes.data || []
+        const subscriptionsData = subscriptionsRes.data || []
+
+        const stats = {
+          totalUsers: usersRes.count || 0,
+          artists: usersData.filter(u => u.role === 'artist').length,
+          collectors: usersData.filter(u => u.role === 'buyer').length,
+          professionals: usersData.filter(u => u.role === 'curator').length,
+          advisors: usersData.filter(u => u.role === 'advisor').length,
+
+          totalArtworks: artworksRes.count || 0,
+          approvedArtworks: artworksData.filter(a => a.status === 'approved').length,
+          pendingArtworks: artworksData.filter(a => a.status === 'pending').length,
+          rejectedArtworks: artworksData.filter(a => a.status === 'rejected').length,
+
+          activeSubscriptions: subscriptionsData.filter(s => s.status === 'active').length,
+          totalSubscriptions: subscriptionsRes.count || 0,
+
+          lastUpdated: new Date().toISOString(),
+        }
+
+        return res.status(200).json(stats)
+      } catch (error) {
+        console.error('[Admin Stats Error]', error)
+        return res.status(500).json({ error: error.message })
+      }
+    }
+
     // Route not found
     res.status(404).json({
       error: 'Route not found',

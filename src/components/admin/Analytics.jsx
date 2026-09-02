@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { utils } from '../../api/useAPI'
+import { useAdminStats } from '../../api/useAdminStatsQuery' /* ✨ React Query */
 import { fmtMoney, XOF_PER_EUR } from '../../lib/currency'
 import { SkeletonKPI, SkeletonChart } from '../ui'
 import {
