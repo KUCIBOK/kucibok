@@ -2521,6 +2521,56 @@ export default async function handler(req, res) {
       })
     }
 
+    // ✨ GET /api/visitor — Get visitor analytics
+    if (s0 === 'visitor' && req.method === 'GET') {
+      try {
+        const user = await checkAuth(req)
+        if (!user) {
+          return res.status(403).json({ error: 'Authentication required' })
+        }
+
+        return res.status(200).json({
+          visitor: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            lastSeen: new Date().toISOString(),
+          },
+        })
+      } catch (error) {
+        console.error('[Visitor Error]', error)
+        return res.status(500).json({ error: error.message })
+      }
+    }
+
+    // ✨ GET /api/subscription — Get user subscription
+    if (s0 === 'subscription' && req.method === 'GET') {
+      try {
+        const user = await checkAuth(req)
+        if (!user) {
+          return res.status(403).json({ error: 'Authentication required' })
+        }
+
+        const { data: subscription, error: subError } = await supabaseAdmin
+          .from('subscriptions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        if (subError && subError.code !== 'PGRST116') {
+          console.error('[Subscription Error]', subError)
+          return res.status(500).json({ error: subError.message })
+        }
+
+        return res.status(200).json(subscription || { message: 'No active subscription' })
+      } catch (error) {
+        console.error('[Subscription Error]', error)
+        return res.status(500).json({ error: error.message })
+      }
+    }
+
     // ✨ GET /api/admin/stats — Real-time admin statistics
     if (s0 === 'admin' && s1 === 'stats' && req.method === 'GET') {
       try {
