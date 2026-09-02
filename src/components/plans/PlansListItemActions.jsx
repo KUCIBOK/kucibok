@@ -1,7 +1,7 @@
 import { AlertCircle, PenBoxIcon, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '../../store/AuthContext'
-import { usePlanStore } from '../../store/PlanContext'
+import { usePlanStore } from '../../api/usePlanQuery'
 import { DataLoader } from '../loaders/PageLoader'
 import { ConfirmDialog, toast, Modal, Input, Select, Button } from '../ui'
 import { Link } from 'react-router-dom'

@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react'
-import { useBlog } from '../../store/BlogContext'
+import { useBlog } from '../../api/useBlogQuery'
 import { useState, useEffect } from 'react'
 import { BlogTable } from './BlogTable'
 import { useAuth } from '../../store/AuthContext'

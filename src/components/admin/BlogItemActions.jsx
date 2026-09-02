@@ -1,7 +1,7 @@
 import { Archive, Eye, Pen, Upload } from 'lucide-react'
 import { DataLoader } from '../loaders/PageLoader'
 import { useState } from 'react'
-import { useBlog } from '../../store/BlogContext'
+import { useBlog } from '../../api/useBlogQuery'
 import { Link } from 'react-router-dom'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'

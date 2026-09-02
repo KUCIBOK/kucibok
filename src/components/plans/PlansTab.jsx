@@ -9,7 +9,7 @@ import {
   CreditCard,
   Layers,
 } from 'lucide-react'
-import { usePlanStore } from '../../store/PlanContext'
+import { usePlanStore } from '../../api/usePlanQuery'
 import { PlansListItemActions } from './PlansListItemActions'
 import { Modal, Input, Select, Button, toast } from '../ui'
 
