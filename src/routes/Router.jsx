@@ -118,16 +118,17 @@ const OAuthCallback = lazy(() => import('../pages/auth/OAuthCallback'))
 
 // Context Providers/Store Imports
 import { AuthContextProvider } from '../store/AuthContext'
-import { ArtworksContextProvider } from '../store/ArtworkContext'
-import { ArtistContextProvider } from '../store/ArtistContext'
-import { BlogContextProvider } from '../store/BlogContext'
+// ✨ PHASE 3 MIGRATION COMPLETE
+// Removed: ArtworksContextProvider (→ React Query hooks)
+// Removed: BlogContextProvider (→ useBlogPosts hook)
+// Removed: GalleryContextProvider (→ React Query)
+// Removed: PlanProvider (→ React Query)
+// Removed: DeliveryContextProvider (→ React Query planned)
 import { UserProvider } from '../store/UsersStore'
-import { PlanProvider } from '../store/PlanContext'
 import { CategoryProvider } from '../store/CategoryStore'
 import { CollectionProvider } from '../store/CollectionStore'
-import { DeliveryContextProvider } from '../store/DeliveryStore'
 import { NumerisationProvider } from '../store/NumerisationStore'
-import { GalleryContextProvider } from '../store/GalleryContext'
+// Note: ArtistContextProvider still needed for other data (kept for now)
 
 // AutoAuth component
 import { AutoAuth } from '../store/AutoAuth'
@@ -360,29 +361,19 @@ export function Router() {
             Tous les providers de contenu et dashboard montent ici.
             Ne s'initialisent PAS sur les pages auth/légales/redirections.
             ═══════════════════════════════════════════════════════════════ */}
+        {/* ✨ PHASE 3: Removed ArtworksContextProvider, BlogContextProvider, etc. */}
+        {/* Now using React Query hooks for data fetching */}
         <Route
           element={
-            <ArtistContextProvider>
-              <ArtworksContextProvider>
-                <BlogContextProvider>
-                  <UserProvider>
-                    <PlanProvider>
-                      <CategoryProvider>
-                        <CollectionProvider>
-                          <DeliveryContextProvider>
-                            <NumerisationProvider>
-                              <GalleryContextProvider>
-                                <Outlet />
-                              </GalleryContextProvider>
-                            </NumerisationProvider>
-                          </DeliveryContextProvider>
-                        </CollectionProvider>
-                      </CategoryProvider>
-                    </PlanProvider>
-                  </UserProvider>
-                </BlogContextProvider>
-              </ArtworksContextProvider>
-            </ArtistContextProvider>
+            <UserProvider>
+              <CategoryProvider>
+                <CollectionProvider>
+                  <NumerisationProvider>
+                    <Outlet />
+                  </NumerisationProvider>
+                </CollectionProvider>
+              </CategoryProvider>
+            </UserProvider>
           }
         >
           {/* Root now displays GlobalPage (same as /global) */}
