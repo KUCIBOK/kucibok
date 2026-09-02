@@ -20,7 +20,7 @@ import { KPICard, Button, SkeletonKPI, Skeleton, EmptyState } from '../ui'
 
 export function Synthesis({ setTab, setToggle }) {
   const { users, artists: artistUsers, curators, buyers, loading: usersLoading } = useUsersContext()
-  const { pending, isLoading: artworksLoading } = usePendingArtworks(); const artworks = pending /* ✨ React Query */
+  const { data: pending = [], isLoading: artworksLoading } = usePendingArtworks(); const artworks = pending /* ✨ React Query */
   const [state, setState] = useState({
     subscriptions: [],
     visitors: [],
