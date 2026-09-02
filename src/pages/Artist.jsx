@@ -6,7 +6,7 @@ import { ArrowLeft, Camera } from 'lucide-react'
 import { Skeleton, SkeletonCard } from '../components/ui'
 import { Marketplace } from '../components/artworks/Marketplace'
 import { getArtistAndUpdateVisited, getArtistById } from '../api/useArtists'
-import { useAuth } from '../store/AuthContext'
+import { useArtistProfile } from '../api/useArtistProfileQuery' /* ✨ React Query */
 import { useAuthUser } from '../api/useAuthUser' /* ✨ React Query */
 import { Helmet } from 'react-helmet'
 import RevealOnScroll from '../components/landing/RevealOnScroll'
@@ -14,7 +14,7 @@ import RevealOnScroll from '../components/landing/RevealOnScroll'
 export default function ArtistDetails() {
   const { id } = useParams()
   const tabs = ['Oeuvres', 'Biographie']
-  const { artistProfile } = useAuth()
+  const { data: artistProfile } = useArtistProfile() /* ✨ React Query */
 
   const [state, setState] = useState({
     artist: null,
