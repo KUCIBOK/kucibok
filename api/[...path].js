@@ -2211,7 +2211,7 @@ export default async function handler(req, res) {
     // CLIENTS ROUTES (CRM for artists & advisors)
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'clients') {
-      const auth = checkAuth(req)
+      const auth = await checkAuth(req)
       if (!auth) {
         return res.status(401).json({ error: 'Unauthorized' })
       }
