@@ -200,6 +200,7 @@ export function Analytics({ currency = 'EUR' }) {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [period, setPeriod] = useState('q1_2026')
   const [lastUpdated, setLastUpdated] = useState(null)
+  const { stats: adminStats } = useAdminStats() /* ✨ Real-time user stats */
 
   const fmt = (eurAmount, opts) => fmtMoney(eurAmount * XOF_PER_EUR, currency, opts)
   const fmtXOF = (xof) => fmtMoney(xof, 'XOF')
@@ -462,7 +463,7 @@ export function Analytics({ currency = 'EUR' }) {
         <HeroKPI
           icon={Users}
           label={t.users}
-          value={merged.totalUsers.toLocaleString('fr-FR')}
+          value={adminStats.totalUsers.toLocaleString('fr-FR')}
           change={`+${merged.acquisition_growth}% ${t.thisMonth}`}
           trend="up"
         />
@@ -729,10 +730,29 @@ export function Analytics({ currency = 'EUR' }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             label="Total utilisateurs"
-            value={merged.totalUsers.toLocaleString('fr-FR')}
-            change={`+${merged.acquisition_growth}% ce mois`}
+            value={adminStats.totalUsers.toLocaleString('fr-FR')}
+            change={`${adminStats.artists} artistes · ${adminStats.collectors} collectionneurs`}
             trend="up"
             color="blue"
+          />
+          <MetricCard
+            label="Artistes"
+            value={adminStats.artists.toLocaleString('fr-FR')}
+            change={`${adminStats.professionals} professionnels`}
+            trend="up"
+            color="purple"
+          />
+          <MetricCard
+            label="Collectionneurs"
+            value={adminStats.collectors.toLocaleString('fr-FR')}
+            change="Acheteurs d'œuvres"
+            color="green"
+          />
+          <MetricCard
+            label="Professionnels"
+            value={adminStats.professionals.toLocaleString('fr-FR')}
+            change="Curateurs & Advisors"
+            color="amber"
           />
           <MetricCard
             label="MAU"
