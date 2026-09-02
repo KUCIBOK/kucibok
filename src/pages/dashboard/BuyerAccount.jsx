@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../store/AuthContext'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useBoughtArtworks } from '../../api/useDashboardArtworksQuery' /* ✨ React Query */
 import { Menu, ShoppingBag, ChevronRight, Package, ShieldCheck, Truck, User } from 'lucide-react'
 import { useLang } from '../../store/LangContext'
 import { uiT } from '../../i18n/ui'
@@ -18,7 +18,7 @@ import { CollectorCertificatesTab } from '../../components/collector/CollectorCe
  * 4 tabs: Orders, Certificates, Deliveries, Profile.
  */
 export default function BuyerAccount() {
-  const { buyed } = useArtworks()
+  const buyed = useBoughtArtworks().data || [] /* ✨ React Query */
   const [toggle, setToggle] = useState(false)
   const { user, buyerProfile, loading } = useAuth()
   const [tab, setTab] = useState(0)

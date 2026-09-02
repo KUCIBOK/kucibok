@@ -26,7 +26,7 @@ import { EmailVerificationBanner } from '../../components/shared/EmailVerificati
 import { ProfileCompletionBanner } from '../../components/shared/ProfileCompletionBanner'
 import { ArtworksList } from '../../components/artworks/ArtworksList'
 import { useAuth } from '../../store/AuthContext'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { Profile } from '../../components/artist/Profile'
 import { Analytics } from '../../components/artist/Analytics'
 import { Synthesis } from '../../components/artist/Synthesis'

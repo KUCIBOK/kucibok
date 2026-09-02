@@ -4,7 +4,7 @@ import { useLang } from '../../store/LangContext'
 import { uiT } from '../../i18n/ui'
 import { CURRENCIES } from '../../lib/currency'
 import { ArtworksList } from '../../components/artworks/ArtworksList'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useDashboardStats } from '../../api/useDashboardArtworksQuery' /* ✨ React Query */
 import {
   ChartColumn,
   CheckCheck,
@@ -48,7 +48,7 @@ import SupportTicketTab from '../../components/admin/SupportTicketTab'
 import LogidooDashboard from '../../components/admin/LogidooDashboard'
 import { AdminArtistsTab } from '../../components/admin/AdminArtistsTab'
 export default function Admin() {
-  const { pending, approved, rejected } = useArtworks()
+  const { pending, approved, rejected } = useDashboardStats() /* ✨ React Query */
   const { numerisations } = useNumerisation()
   const [toggle, setToggle] = useState(false)
   const { user, loading } = useAuth()
