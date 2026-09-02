@@ -15,7 +15,7 @@ import {
   createNumerisation,
   deleteNumerisationRequest,
 } from '../../api/useNumerisation'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { KPICard } from '../ui'
 
 /** Badge de statut coloré pour une demande de numérisation. */
@@ -51,7 +51,7 @@ function StatusBadge({ status }) {
  * @returns {JSX.Element}
  */
 export function ArtistNumerisationTab() {
-  const { myArtworks } = useArtworks()
+  const { myArtworks, loading } = useMyArtworks() /* ✨ React Query */
 
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)

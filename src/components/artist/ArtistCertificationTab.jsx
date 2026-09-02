@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { ShieldCheck, Shield, ExternalLink, Info, FileQuestion } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { KPICard } from '../ui'
 import { useT } from '../../i18n'
 import { artistT } from '../../i18n/artist'
@@ -40,7 +40,7 @@ function ArtworkStatusBadge({ status, labels }) {
  */
 export function ArtistCertificationTab() {
   const t = useT(artistT).certifications
-  const { myArtworks } = useArtworks()
+  const { myArtworks, loading } = useMyArtworks() /* ✨ React Query */
 
   const KCB_FILTERS = [
     { value: 'all', label: t.filters.all },

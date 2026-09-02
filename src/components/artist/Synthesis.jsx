@@ -1,7 +1,7 @@
 import { Clock, Image, TrendingUp, Truck, Users } from 'lucide-react'
 import { RewardsWidget } from './RewardsWidget'
 import { useArtist } from '../../store/ArtistContext'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { Link } from 'react-router-dom'
 import { ArtistTable } from '../artists/ArtistTable'
 import { ArtworksList } from '../artworks/ArtworksList'
@@ -23,7 +23,7 @@ import { artistT } from '../../i18n/artist'
 import { useLang } from '../../store/LangContext'
 
 export function Synthesis({ setTab }) {
-  const { myArtworks, loading } = useArtworks()
+  const { myArtworks, loading } = useMyArtworks() /* ✨ React Query */
   const t = useT(artistT).synthesis
   const { lang } = useLang()
   const currentMonth = new Date().getMonth()

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { useArtist } from '../../store/ArtistContext'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useArtists } from '../../api/useArtistsQuery' /* ✨ React Query */
+import { useApprovedArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { ExternalLink, Image, Search, Shield, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const PER_PAGE = 25
@@ -9,8 +9,8 @@ const PER_PAGE = 25
  * Onglet admin — liste de tous les artistes avec statistiques.
  */
 export function AdminArtistsTab() {
-  const { artists } = useArtist()
-  const { approved } = useArtworks()
+  const { data: artists = [] } = useArtists() /* ✨ React Query */
+  const { data: approved = [] } = useApprovedArtworks() /* ✨ React Query */
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
