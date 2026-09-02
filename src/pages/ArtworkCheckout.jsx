@@ -5,6 +5,7 @@ import { getArtistById } from '../api/useArtists'
 import { getArtworkById } from '../api/useArtworks'
 import { AlertCircle, ArrowLeft, Lock, ShoppingCart, User } from 'lucide-react'
 import { useAuth } from '../store/AuthContext'
+import { useAuthUser } from '../api/useAuthUser' /* ✨ React Query */
 import { DataLoader } from '../components/loaders/PageLoader'
 import { usePayment } from '../hooks/usePayment'
 import PaymentMethodSelector from '../components/PaymentMethodSelector'
@@ -14,7 +15,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function ArtworkCheckout() {
   const { id } = useParams()
-  const { user } = useAuth()
+  const { data: user } = useAuthUser() /* ✨ React Query */
   const { payForArtwork, loading: paymentLoading } = usePayment()
 
   const [artwork, setArtwork] = useState({

@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import RevealOnScroll from '../components/landing/RevealOnScroll'
 import { useAuth } from '../store/AuthContext'
+import { useAuthUser } from '../api/useAuthUser' /* ✨ React Query */
 import { useEffect, useState } from 'react'
 import { getPlanById } from '../api/usePlans'
 import { AlertCircle, ArrowLeft, Check, Lock, ShieldCheck, ShoppingCart } from 'lucide-react'
@@ -23,7 +24,7 @@ function getTvaRate(currency) {
 
 export default function SubscriptionPlanCheckout() {
   const { id } = useParams()
-  const { user } = useAuth()
+  const { data: user } = useAuthUser() /* ✨ React Query */
   const { payForSubscription, loading: paymentLoading } = usePayment()
   const [state, setState] = useState({
     plan: {},

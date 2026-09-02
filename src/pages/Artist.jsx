@@ -7,6 +7,7 @@ import { Skeleton, SkeletonCard } from '../components/ui'
 import { Marketplace } from '../components/artworks/Marketplace'
 import { getArtistAndUpdateVisited, getArtistById } from '../api/useArtists'
 import { useAuth } from '../store/AuthContext'
+import { useAuthUser } from '../api/useAuthUser' /* ✨ React Query */
 import { Helmet } from 'react-helmet'
 import RevealOnScroll from '../components/landing/RevealOnScroll'
 
