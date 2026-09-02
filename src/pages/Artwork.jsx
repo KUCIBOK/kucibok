@@ -19,7 +19,7 @@ import { getArtworkById } from '../api/useArtworks'
 import { useToast } from '../store/ToastContext'
 import { useAuth } from '../store/AuthContext' // ⏳ Kept for now (fallback)
 import { useAuthUser } from '../api/useAuthUser' // ✨ New: React Query
-import { useArtworks } from '../store/ArtworkContext'
+import { useArtworks } from '../api/useArtworksQuery' /* ✨ React Query - for recommendations */
 import { getArtistById } from '../api/useArtists'
 import { Skeleton, SkeletonCard } from '../components/ui'
 import { Helmet } from 'react-helmet'
@@ -57,7 +57,7 @@ export default function Artwork() {
   const { id } = useParams()
   const { makeToast } = useToast()
   const { data: user } = useAuthUser() // ✨ Migrated to React Query
-  const { forSale } = useArtworks()
+  const { data: forSale = [] } = useArtworks({ for_sale: true }) /* ✨ React Query */
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const portal = pathname.startsWith('/global') ? '/global' : '/africa'
