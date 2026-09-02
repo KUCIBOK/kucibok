@@ -5,11 +5,11 @@ import { getMySubscription } from '../api/useSubscriptions'
 import { DataLoader } from '../components/loaders/PageLoader'
 import { toast } from 'sonner'
 import RevealOnScroll from '../components/landing/RevealOnScroll'
-import { useAuth } from '../store/AuthContext'
+import { useAuthUser } from '../api/useAuthUser' /* ✨ React Query */
 
 export default function SubscriptionSuccess() {
   const [searchParams] = useSearchParams()
-  const { user } = useAuth()
+  const { data: user } = useAuthUser() /* ✨ React Query */
   const [state, setState] = useState({ subscription: null, plan: null, loading: true, error: null })
 
   useEffect(() => {

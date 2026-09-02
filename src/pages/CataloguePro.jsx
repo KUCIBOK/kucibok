@@ -4,7 +4,7 @@ import { ShieldCheck, SlidersHorizontal, Search, X, Loader2, ArrowLeft, Lock } f
 import { getCataloguePro } from '../api/useSourcing'
 import { SourcingInquiryModal } from '../components/artworks/SourcingInquiryModal'
 import { Helmet } from 'react-helmet'
-import { useAuth } from '../store/AuthContext'
+import { useSubscription } from '../api/useSubscriptionQuery' /* ✨ React Query */
 
 const AVAILABILITY_LABELS = {
   available: { label: 'Disponible', color: 'text-green-400 bg-green-900/30 border-green-800/40' },
@@ -77,7 +77,7 @@ function SubscriptionGate() {
 }
 
 export default function CataloguePro() {
-  const { subscription } = useAuth()
+  const { data: subscription } = useSubscription() /* ✨ React Query */
   const isSubscriptionActive = subscription?.status === 'active'
 
   const [filters, setFilters] = useState(INITIAL_FILTERS)
