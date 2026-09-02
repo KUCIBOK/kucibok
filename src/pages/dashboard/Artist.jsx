@@ -42,7 +42,7 @@ import { RewardsHub } from '../../components/artist/RewardsHub'
 export default function Artist() {
   const { user, artistProfile, loading } = useAuth()
   const [toggle, setToggle] = useState(false)
-  const { myArtworks, loading: artworksLoading } = useArtworks()
+  const { data: myArtworks = [], isLoading: artworksLoading } = useMyArtworks() /* ✨ React Query */
   const [tab, setTab] = useState(0)
   const { lang } = useLang()
   const td = uiT[lang].dashboards.artist

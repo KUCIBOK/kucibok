@@ -1,6 +1,6 @@
 import { Bookmark, Clock, CreditCard, Image, Package, TrendingUp, Truck } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useCollectorView } from '../../api/useCollectorArtworksQuery' /* ✨ React Query */
 import { useAuth } from '../../store/AuthContext'
 import { useDelivery } from '../../store/DeliveryStore'
 import { AddArtistAction } from '../professional/AddArtistAction'
@@ -37,7 +37,7 @@ function DeliveryStatusBadge({ status, t }) {
  * @returns {JSX.Element}
  */
 export function Synthesis() {
-  const { buyed, loading: artworksLoading } = useArtworks()
+  const { buyed, loading: artworksLoading } = useCollectorView() /* ✨ React Query */
   const { subscription } = useAuth()
   const { deliveries } = useDelivery()
   const t = useT(buyerT).synthesis

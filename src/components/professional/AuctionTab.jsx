@@ -1,8 +1,8 @@
 import { AuctionsList } from '../auction/AuctionsList'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 
 export function AuctionTab() {
-  const { myArtworks } = useArtworks()
+  const { data: myArtworks = [] } = useMyArtworks() /* ✨ React Query */
   return (
     <>
       <div className="rounded-[4px] border bg-kcb-ardoise shadow-sm p-6">

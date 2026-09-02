@@ -20,7 +20,7 @@ import {
 import { fmtMoney } from '../../lib/currency'
 import { useAuth } from '../../store/AuthContext'
 import { useArtist } from '../../store/ArtistContext'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { AddArtistAction } from './AddArtistAction'
 import { Link } from 'react-router-dom'
 import { ArtworksList } from '../artworks/ArtworksList'
@@ -84,7 +84,7 @@ const CHART_TICK_COLOR = '#9AA0AC'
 export function Synthesis() {
   const { curatorProfile } = useAuth()
   const { myArtists, loading: artistsLoading } = useArtist()
-  const { myArtworks, loading: artworksLoading } = useArtworks()
+  const { data: myArtworks = [], isLoading: artworksLoading } = useMyArtworks() /* ✨ React Query */
   const isLoading = artistsLoading || artworksLoading || myArtists == null || myArtworks == null
 
   const now = new Date()

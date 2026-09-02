@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { useArtist } from '../../store/ArtistContext'
 import { cancelMySubscription } from '../../api/useSubscriptions'
 
@@ -102,7 +102,7 @@ function getPlanKey(planName) {
 
 export function Abonnement() {
   const { subscription, loadSubscription } = useAuth()
-  const { myArtworks } = useArtworks()
+  const { data: myArtworks = [] } = useMyArtworks() /* ✨ React Query */
   const { myArtists } = useArtist()
   const [loading, setLoading] = useState(true)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)

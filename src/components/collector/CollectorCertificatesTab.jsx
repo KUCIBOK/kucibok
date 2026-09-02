@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { ShieldCheck, Shield, ExternalLink, FileQuestion, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useCollectorView } from '../../api/useCollectorArtworksQuery'; import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { KPICard, SkeletonTable, EmptyState } from '../ui'
 import { useT } from '../../i18n'
 import { buyerT } from '../../i18n/buyer'
@@ -26,7 +26,7 @@ function CertBadge({ kucibok_id, t }) {
  * Affiche les certificats KCB des œuvres achetées et de la collection personnelle.
  */
 export function CollectorCertificatesTab() {
-  const { buyed, myArtworks, loading } = useArtworks()
+  const { buyed } = useCollectorView(); const { data: myArtworks = [], isLoading: loading } = useMyArtworks() /* ✨ React Query */
   const t = useT(buyerT).certificates
 
   // Fusion achats + collection, déduplication par id

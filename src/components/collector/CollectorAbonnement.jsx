@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
-import { useArtworks } from '../../store/ArtworkContext'
+import { useCollectorView } from '../../api/useCollectorArtworksQuery' /* ✨ React Query */
 import { Progress, KPICard, Badge, Button } from '../ui'
 
 // Plan features limits for collectors
@@ -87,7 +87,7 @@ function getPlanKey(planName) {
 
 export function CollectorAbonnement() {
   const { subscription } = useAuth()
-  const { buyed, favorites } = useArtworks()
+  const { buyed, favorites } = useCollectorView() /* ✨ React Query */
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
