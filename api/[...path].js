@@ -2551,19 +2551,19 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: 'Authentication required' })
         }
 
-        const { data: subscription, error: subError } = await supabaseAdmin
+        const { data: subscriptions, error: subError } = await supabaseAdmin
           .from('subscriptions')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single()
 
-        if (subError && subError.code !== 'PGRST116') {
+        if (subError) {
           console.error('[Subscription Error]', subError)
           return res.status(500).json({ error: subError.message })
         }
 
+        const subscription = subscriptions?.[0] || null
         return res.status(200).json(subscription || { message: 'No active subscription' })
       } catch (error) {
         console.error('[Subscription Error]', error)
