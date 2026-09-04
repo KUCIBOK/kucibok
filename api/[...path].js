@@ -2617,6 +2617,126 @@ export default async function handler(req, res) {
       }
     }
 
+    // ✨ GET /api/admin/artworks-stats — Artwork counts by status
+    if (s0 === 'admin' && s1 === 'artworks-stats' && req.method === 'GET') {
+      try {
+        const user = await checkAuth(req)
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
+        const { data: artworks, error: err } = await supabaseAdmin
+          .from('artworks')
+          .select('status')
+
+        if (err) {
+          console.error('[GET /api/admin/artworks-stats] Error:', err)
+          return res.status(500).json({ error: err.message })
+        }
+
+        const stats = {
+          total: artworks?.length || 0,
+          pending: artworks?.filter(a => a.status === 'pending').length || 0,
+          approved: artworks?.filter(a => a.status === 'approved').length || 0,
+          rejected: artworks?.filter(a => a.status === 'rejected').length || 0,
+        }
+
+        console.log('[GET /api/admin/artworks-stats] Counts:', stats)
+        return res.status(200).json(stats)
+      } catch (error) {
+        console.error('[Admin Artworks Stats Error]', error)
+        return res.status(500).json({ error: error.message })
+      }
+    }
+
+    // ✨ GET /api/admin/artworks-list — Artworks by status
+    if (s0 === 'admin' && s1 === 'artworks-list' && req.method === 'GET') {
+      try {
+        const user = await checkAuth(req)
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
+        const { status = 'approved', limit = 100 } = req.query
+
+        const { data: artworks, error: err } = await supabaseAdmin
+          .from('artworks')
+          .select('id, kucibok_id, title, category, artist_id, status, created_at')
+          .eq('status', status)
+          .order('created_at', { ascending: false })
+          .limit(parseInt(limit))
+
+        if (err) {
+          console.error('[GET /api/admin/artworks-list] Error:', err)
+          return res.status(500).json({ error: err.message })
+        }
+
+        console.log('[GET /api/admin/artworks-list] Loaded:', artworks?.length, status)
+        return res.status(200).json({ artworks: artworks || [] })
+      } catch (error) {
+        console.error('[Admin Artworks List Error]', error)
+        return res.status(500).json({ error: error.message })
+      }
+    }
+
+    // ✨ GET /api/admin/users-list — All users
+    if (s0 === 'admin' && s1 === 'users-list' && req.method === 'GET') {
+      try {
+        const user = await checkAuth(req)
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
+        const { limit = 100 } = req.query
+
+        const { data: users, error: err } = await supabaseAdmin
+          .from('users')
+          .select('id, name, email, role, country, is_active, created_at')
+          .order('created_at', { ascending: false })
+          .limit(parseInt(limit))
+
+        if (err) {
+          console.error('[GET /api/admin/users-list] Error:', err)
+          return res.status(500).json({ error: err.message })
+        }
+
+        console.log('[GET /api/admin/users-list] Loaded:', users?.length)
+        return res.status(200).json({ users: users || [] })
+      } catch (error) {
+        console.error('[Admin Users List Error]', error)
+        return res.status(500).json({ error: error.message })
+      }
+    }
+
+    // ✨ GET /api/admin/clients-list — All clients
+    if (s0 === 'admin' && s1 === 'clients-list' && req.method === 'GET') {
+      try {
+        const user = await checkAuth(req)
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
+        const { limit = 100 } = req.query
+
+        const { data: clients, error: err } = await supabaseAdmin
+          .from('clients')
+          .select('id, user_id, name, email, telephone, country, notes, created_at')
+          .order('created_at', { ascending: false })
+          .limit(parseInt(limit))
+
+        if (err) {
+          console.error('[GET /api/admin/clients-list] Error:', err)
+          return res.status(500).json({ error: err.message })
+        }
+
+        console.log('[GET /api/admin/clients-list] Loaded:', clients?.length)
+        return res.status(200).json({ clients: clients || [] })
+      } catch (error) {
+        console.error('[Admin Clients List Error]', error)
+        return res.status(500).json({ error: error.message })
+      }
+    }
+
     // Route not found
     res.status(404).json({
       error: 'Route not found',

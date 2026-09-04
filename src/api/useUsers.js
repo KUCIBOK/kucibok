@@ -3,9 +3,10 @@ const { api } = utils
 
 export async function getAllUsers() {
   try {
-    const response = await fetch(`${api}/auth`, { ...utils.options })
+    // Use /api/admin/users-list to bypass RLS (requires admin auth)
+    const response = await fetch(`${api}/admin/users-list`, { ...utils.options })
     const json = await response.json()
-    const users = json?.data ?? json
+    const users = json?.users ?? json?.data ?? json
     if (users?.length > 0) {
       return users
     }

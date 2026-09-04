@@ -8,12 +8,14 @@ import { utils } from './useAPI'
 
 /**
  * Fetch artworks by status (admin/curator dashboard)
+ * Uses /api/admin/artworks-list to bypass RLS (requires admin auth)
  */
 async function fetchArtworksByStatus(status) {
   if (!utils.token) return []
-  const res = await fetch(`${utils.api}/artworks?status=${status}`, utils.options)
+  const res = await fetch(`${utils.api}/admin/artworks-list?status=${status}`, utils.options)
   if (!res.ok) throw new Error(`Failed to fetch ${status} artworks`)
-  return res.json()
+  const data = await res.json()
+  return data.artworks || []
 }
 
 /**

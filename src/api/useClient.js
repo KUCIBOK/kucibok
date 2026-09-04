@@ -53,14 +53,15 @@ export async function uploadClientsFromFile(file) {
 
 export async function getAllClients() {
   try {
-    const response = await fetch(`${api}/clients/`, {
+    // Use /api/admin/clients-list to bypass RLS (requires admin auth)
+    const response = await fetch(`${api}/admin/clients-list`, {
       ...utils.options,
       method: 'GET',
     })
 
     const data = await response.json()
     if (response.ok) {
-      return data.clients
+      return data.clients || data?.data?.clients || data
     }
     return {
       error: data?.message || data?.error || 'Erreur lors de la récupération',
