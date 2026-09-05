@@ -742,7 +742,7 @@ export default async function handler(req, res) {
       // ─────────────────────────────────────────────────────────────
 
       // GET /api/artworks/collection — Collector's complete collection
-      if (req.method === 'GET' && s1 === 'collection' && !s2) {
+      if (s0 === 'artworks' && req.method === 'GET' && s1 === 'collection' && !s2) {
         const auth = await checkAuth(req)
         if (!auth?.userId) {
           return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
@@ -837,7 +837,7 @@ export default async function handler(req, res) {
       }
 
       // GET /api/artworks/collection-summary — Collection stats
-      if (req.method === 'GET' && s1 === 'collection-summary') {
+      if (s0 === 'artworks' && req.method === 'GET' && s1 === 'collection-summary') {
         const auth = await checkAuth(req)
         if (!auth?.userId) {
           return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
@@ -868,7 +868,7 @@ export default async function handler(req, res) {
       }
 
       // GET /api/artworks/collection/recent — Recent acquisitions
-      if (req.method === 'GET' && s1 === 'collection' && s2 === 'recent') {
+      if (s0 === 'artworks' && req.method === 'GET' && s1 === 'collection' && s2 === 'recent') {
         const auth = await checkAuth(req)
         if (!auth?.userId) {
           return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
@@ -903,7 +903,7 @@ export default async function handler(req, res) {
       // ─────────────────────────────────────────────────────────────
 
       // GET /api/artworks/purchase-history — Transaction history
-      if (req.method === 'GET' && s1 === 'purchase-history') {
+      if (s0 === 'artworks' && req.method === 'GET' && s1 === 'purchase-history') {
         const auth = await checkAuth(req)
         if (!auth?.userId) {
           return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
@@ -961,7 +961,7 @@ export default async function handler(req, res) {
       }
 
       // GET /api/artworks/purchase-stats — Purchase statistics
-      if (req.method === 'GET' && s1 === 'purchase-stats') {
+      if (s0 === 'artworks' && req.method === 'GET' && s1 === 'purchase-stats') {
         const auth = await checkAuth(req)
         if (!auth?.userId) {
           return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
@@ -997,7 +997,7 @@ export default async function handler(req, res) {
       // ─────────────────────────────────────────────────────────────
 
       // GET /api/artworks/priority-access — Priority access artworks (new listings)
-      if (req.method === 'GET' && s1 === 'priority-access') {
+      if (s0 === 'artworks' && req.method === 'GET' && s1 === 'priority-access') {
         const auth = await checkAuth(req)
         if (!auth?.userId) {
           return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
@@ -1059,7 +1059,7 @@ export default async function handler(req, res) {
       }
 
       // GET /api/artists/:id — Get single artist
-      if (req.method === 'GET' && s1) {
+      if (req.method === 'GET' && s1 && !['followed', 'follow', 'unfollow'].includes(s1)) {
         const { data, error } = await supabaseAdmin
           .from('artists')
           .select('*')
