@@ -736,6 +736,299 @@ export default async function handler(req, res) {
           deleted: true,
         })
       }
+
+      // ─────────────────────────────────────────────────────────────
+      // COLLECTOR COLLECTION ENDPOINTS
+      // ─────────────────────────────────────────────────────────────
+
+      // GET /api/artworks/collection — Collector's complete collection
+      if (req.method === 'GET' && s1 === 'collection' && !s2) {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        const {
+          artist,
+          medium,
+          source, // 'bought' or 'digitized'
+          year_from,
+          year_to,
+          sort = 'date_desc',
+          page = 0,
+          limit = 20,
+        } = req.query
+
+        try {
+          let query = supabaseAdmin
+            .from('artworks')
+            .select('*', { count: 'exact' })
+
+          // Filter: Own artworks (purchased or digitized)
+          query = query.eq('owner_id', auth.userId)
+
+          // Filter by artist name
+          if (artist) {
+            query = query.ilike('artist_name', `%${artist}%`)
+          }
+
+          // Filter by medium
+          if (medium) {
+            query = query.ilike('medium', `%${medium}%`)
+          }
+
+          // Filter by source
+          if (source === 'bought') {
+            query = query.eq('source', 'purchased')
+          } else if (source === 'digitized') {
+            query = query.eq('source', 'digitized')
+          }
+
+          // Filter by year range
+          if (year_from) {
+            query = query.gte('year', parseInt(year_from))
+          }
+          if (year_to) {
+            query = query.lte('year', parseInt(year_to))
+          }
+
+          // Apply sort
+          if (sort === 'value_desc') {
+            query = query.order('price_documented', { ascending: false })
+          } else if (sort === 'value_asc') {
+            query = query.order('price_documented', { ascending: true })
+          } else if (sort === 'artist_asc') {
+            query = query.order('artist_name', { ascending: true })
+          } else if (sort === 'artist_desc') {
+            query = query.order('artist_name', { ascending: false })
+          } else if (sort === 'date_asc') {
+            query = query.order('acquisition_date', { ascending: true })
+          } else {
+            // date_desc (default)
+            query = query.order('acquisition_date', { ascending: false })
+          }
+
+          // Pagination
+          const offset = parseInt(page) * parseInt(limit)
+          query = query.range(offset, offset + parseInt(limit) - 1)
+
+          const { data: artworks, error, count } = await query
+
+          if (error) {
+            console.error('[GET /api/artworks/collection] Error:', error)
+            return res.status(500).json({ error: error.message })
+          }
+
+          // Calculate total value
+          const totalValue = (artworks || []).reduce((sum, a) => sum + (a.price_documented || 0), 0)
+
+          return res.status(200).json({
+            success: true,
+            artworks: artworks || [],
+            count: count || 0,
+            total_value: totalValue,
+            page: parseInt(page),
+            limit: parseInt(limit),
+          })
+        } catch (err) {
+          console.error('[GET /api/artworks/collection] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // GET /api/artworks/collection-summary — Collection stats
+      if (req.method === 'GET' && s1 === 'collection-summary') {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        try {
+          const { data: artworks, error } = await supabaseAdmin
+            .from('artworks')
+            .select('id, price_documented')
+            .eq('owner_id', auth.userId)
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          const totalArtworks = artworks?.length || 0
+          const totalValue = (artworks || []).reduce((sum, a) => sum + (a.price_documented || 0), 0)
+
+          return res.status(200).json({
+            success: true,
+            total_artworks: totalArtworks,
+            total_value: totalValue,
+          })
+        } catch (err) {
+          console.error('[GET /api/artworks/collection-summary] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // GET /api/artworks/collection/recent — Recent acquisitions
+      if (req.method === 'GET' && s1 === 'collection' && s2 === 'recent') {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        const { limit = 3 } = req.query
+
+        try {
+          const { data: artworks, error } = await supabaseAdmin
+            .from('artworks')
+            .select('*')
+            .eq('owner_id', auth.userId)
+            .order('acquisition_date', { ascending: false })
+            .limit(parseInt(limit))
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({
+            success: true,
+            artworks: artworks || [],
+          })
+        } catch (err) {
+          console.error('[GET /api/artworks/collection/recent] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // PURCHASE HISTORY ENDPOINTS
+      // ─────────────────────────────────────────────────────────────
+
+      // GET /api/artworks/purchase-history — Transaction history
+      if (req.method === 'GET' && s1 === 'purchase-history') {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        const {
+          status,
+          from_date,
+          to_date,
+          limit = 50,
+          page = 0,
+        } = req.query
+
+        try {
+          let query = supabaseAdmin
+            .from('transactions')
+            .select('*', { count: 'exact' })
+            .eq('buyer_id', auth.userId)
+
+          // Filter by status
+          if (status) {
+            query = query.eq('status', status)
+          }
+
+          // Filter by date range
+          if (from_date) {
+            query = query.gte('created_at', from_date)
+          }
+          if (to_date) {
+            query = query.lte('created_at', to_date)
+          }
+
+          // Order and paginate
+          query = query.order('created_at', { ascending: false })
+          const offset = parseInt(page) * parseInt(limit)
+          query = query.range(offset, offset + parseInt(limit) - 1)
+
+          const { data: transactions, error, count } = await query
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({
+            success: true,
+            transactions: transactions || [],
+            count: count || 0,
+            page: parseInt(page),
+            limit: parseInt(limit),
+          })
+        } catch (err) {
+          console.error('[GET /api/artworks/purchase-history] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // GET /api/artworks/purchase-stats — Purchase statistics
+      if (req.method === 'GET' && s1 === 'purchase-stats') {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        try {
+          const { data: transactions, error } = await supabaseAdmin
+            .from('transactions')
+            .select('amount, status')
+            .eq('buyer_id', auth.userId)
+            .eq('status', 'paid')
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          const totalPurchased = transactions?.length || 0
+          const totalAmount = (transactions || []).reduce((sum, t) => sum + (t.amount || 0), 0)
+
+          return res.status(200).json({
+            success: true,
+            total_purchased: totalPurchased,
+            total_amount: totalAmount,
+          })
+        } catch (err) {
+          console.error('[GET /api/artworks/purchase-stats] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // PRIORITY ACCESS ENDPOINTS
+      // ─────────────────────────────────────────────────────────────
+
+      // GET /api/artworks/priority-access — Priority access artworks (new listings)
+      if (req.method === 'GET' && s1 === 'priority-access') {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        const { limit = 10 } = req.query
+
+        try {
+          // Get artworks marked for priority access, ordered by newest
+          const { data: artworks, error } = await supabaseAdmin
+            .from('artworks')
+            .select('*')
+            .eq('status', 'approved')
+            .eq('priority_access', true)
+            .order('created_at', { ascending: false })
+            .limit(parseInt(limit))
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({
+            success: true,
+            artworks: artworks || [],
+            count: artworks?.length || 0,
+          })
+        } catch (err) {
+          console.error('[GET /api/artworks/priority-access] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
+      }
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -781,6 +1074,163 @@ export default async function handler(req, res) {
           success: true,
           data,
         })
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // COLLECTOR FOLLOW ENDPOINTS
+      // ─────────────────────────────────────────────────────────────
+
+      // GET /api/artists/followed — Get followed artists for collector
+      if (req.method === 'GET' && s1 === 'followed') {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        try {
+          // Get followed artists
+          const { data: followedArtists, error: followError } = await supabaseAdmin
+            .from('collector_follows')
+            .select('artist_id')
+            .eq('collector_id', auth.userId)
+
+          if (followError) {
+            return res.status(500).json({ error: followError.message })
+          }
+
+          if (!followedArtists || followedArtists.length === 0) {
+            return res.status(200).json({
+              success: true,
+              artists: [],
+              count: 0,
+            })
+          }
+
+          const artistIds = followedArtists.map(f => f.artist_id)
+
+          // Get artist details and check if they have new works
+          const { data: artists, error: artistError } = await supabaseAdmin
+            .from('artists')
+            .select('id, name, image')
+            .in('id', artistIds)
+
+          if (artistError) {
+            return res.status(500).json({ error: artistError.message })
+          }
+
+          // Check for new works for each artist
+          const artistsWithNewWorks = await Promise.all(
+            (artists || []).map(async (artist) => {
+              const { data: newWorks } = await supabaseAdmin
+                .from('artworks')
+                .select('id')
+                .eq('artist_id', artist.id)
+                .eq('status', 'approved')
+                .order('created_at', { ascending: false })
+                .limit(1)
+
+              return {
+                ...artist,
+                has_new_work: newWorks && newWorks.length > 0,
+              }
+            })
+          )
+
+          return res.status(200).json({
+            success: true,
+            artists: artistsWithNewWorks || [],
+            count: artistsWithNewWorks?.length || 0,
+          })
+        } catch (err) {
+          console.error('[GET /api/artists/followed] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // POST /api/artist/follow/:artist_id — Follow an artist
+      if (req.method === 'POST' && s1 === 'follow' && s2) {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        try {
+          const artistId = s2
+
+          // Check if already following
+          const { data: existing } = await supabaseAdmin
+            .from('collector_follows')
+            .select('id')
+            .eq('collector_id', auth.userId)
+            .eq('artist_id', artistId)
+            .maybeSingle()
+
+          if (existing) {
+            return res.status(200).json({
+              success: true,
+              message: 'Already following this artist',
+              already_following: true,
+            })
+          }
+
+          // Insert follow
+          const { error } = await supabaseAdmin
+            .from('collector_follows')
+            .insert({
+              collector_id: auth.userId,
+              artist_id: artistId,
+            })
+
+          if (error) {
+            if (error.code === '23505') {
+              // Unique constraint violation = already following
+              return res.status(200).json({
+                success: true,
+                message: 'Already following this artist',
+                already_following: true,
+              })
+            }
+            throw error
+          }
+
+          return res.status(201).json({
+            success: true,
+            message: 'Artist followed successfully',
+          })
+        } catch (err) {
+          console.error('[POST /api/artist/follow] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
+      }
+
+      // POST /api/artist/unfollow/:artist_id — Unfollow an artist
+      if (req.method === 'POST' && s1 === 'unfollow' && s2) {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        try {
+          const artistId = s2
+
+          const { error } = await supabaseAdmin
+            .from('collector_follows')
+            .delete()
+            .eq('collector_id', auth.userId)
+            .eq('artist_id', artistId)
+
+          if (error) {
+            return res.status(500).json({ error: error.message })
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: 'Artist unfollowed successfully',
+          })
+        } catch (err) {
+          console.error('[POST /api/artist/unfollow] Exception:', err)
+          return res.status(500).json({ error: err.message })
+        }
       }
     }
 
@@ -2997,6 +3447,94 @@ export default async function handler(req, res) {
       } catch (error) {
         console.error('[Admin Clients List Error]', error)
         return res.status(500).json({ error: error.message })
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // NOTIFICATION PREFERENCES ENDPOINTS
+    // ─────────────────────────────────────────────────────────────
+
+    // GET /api/notifications/preferences — Get notification preferences
+    if (req.method === 'GET' && s0 === 'notifications' && s1 === 'preferences') {
+      const auth = await checkAuth(req)
+      if (!auth?.userId) {
+        return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+      }
+
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('notification_preferences')
+          .select('*')
+          .eq('user_id', auth.userId)
+          .maybeSingle()
+
+        if (error) {
+          return res.status(500).json({ error: error.message })
+        }
+
+        // Return defaults if not set
+        const preferences = data || {
+          user_id: auth.userId,
+          notification_mode: 'in_app',
+          frequency: 'immediate',
+        }
+
+        return res.status(200).json({
+          success: true,
+          preferences,
+        })
+      } catch (err) {
+        console.error('[GET /api/notifications/preferences] Exception:', err)
+        return res.status(500).json({ error: err.message })
+      }
+    }
+
+    // POST /api/notifications/preferences — Update notification preferences
+    if (req.method === 'POST' && s0 === 'notifications' && s1 === 'preferences') {
+      const auth = await checkAuth(req)
+      if (!auth?.userId) {
+        return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+      }
+
+      try {
+        const { notification_mode, frequency } = req.body
+
+        // Validate inputs
+        if (notification_mode && !['in_app', 'email', 'both'].includes(notification_mode)) {
+          return res.status(400).json({
+            error: 'Invalid notification_mode. Must be: in_app, email, or both',
+          })
+        }
+
+        if (frequency && !['immediate', 'weekly'].includes(frequency)) {
+          return res.status(400).json({
+            error: 'Invalid frequency. Must be: immediate or weekly',
+          })
+        }
+
+        // Upsert preferences
+        const { data, error } = await supabaseAdmin
+          .from('notification_preferences')
+          .upsert({
+            user_id: auth.userId,
+            notification_mode: notification_mode || 'in_app',
+            frequency: frequency || 'immediate',
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single()
+
+        if (error) {
+          return res.status(500).json({ error: error.message })
+        }
+
+        return res.status(200).json({
+          success: true,
+          preferences: data,
+        })
+      } catch (err) {
+        console.error('[POST /api/notifications/preferences] Exception:', err)
+        return res.status(500).json({ error: err.message })
       }
     }
 
