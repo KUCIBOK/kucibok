@@ -61,7 +61,7 @@ const Q1_2026 = {
   saas_segments: {
     collectionneur: { count: 49, mrr: 1279, share: 21 },
     curateur: { count: 128, mrr: 3197, share: 55 },
-    galerie: { count: 55, mrr: 1570, share: 24 },
+    art_advisor: { count: 55, mrr: 1570, share: 24 },
   },
   gmv: 12500,
   aov: 500,
@@ -222,7 +222,7 @@ export function Analytics({ currency = 'EUR' }) {
     saas_segments: {
       collectionneur: { count: 34, mrr: 909, share: 22 },
       curateur: { count: 87, mrr: 2272, share: 55 },
-      galerie: { count: 43, mrr: 1117, share: 27 },
+      art_advisor: { count: 43, mrr: 1117, share: 27 },
     },
     totalUsers: 7154,
     mau: 5500,
@@ -350,6 +350,9 @@ export function Analytics({ currency = 'EUR' }) {
           mrrGrowth: 10,
           arr_growth: 35,
           revenue_projection_3m: Q2_2026.mrr_projection,
+          totalArtworks: 300,
+          artworks_with_cert: 300,
+          certs_generated: 300,
         }
       : {}
 
@@ -652,7 +655,8 @@ export function Analytics({ currency = 'EUR' }) {
                 className="bg-kcb-ardoise/50 border border-white/[0.06] rounded-[4px] p-4"
               >
                 <p className="text-kcb-pierre text-sm mb-1 capitalize">
-                  {seg} <span className="text-kcb-or">({info.share}%)</span>
+                  {(seg === 'art_advisor' ? 'Art advisors' : seg)}{' '}
+                  <span className="text-kcb-or">({info.share}%)</span>
                 </p>
                 <p className="text-2xl font-bold text-white">
                   {info.count}{' '}

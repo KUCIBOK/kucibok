@@ -141,6 +141,11 @@ export const utils = {
   /** Base URL de l'API (Vercel Functions post-migration / VPS pré-migration). */
   api: import.meta.env.VITE_API_URL,
 
+  /** Token courant, utilisé par les hooks pour activer les requêtes authentifiées. */
+  get token() {
+    return _currentToken
+  },
+
   /**
    * Getter ES6 — retourne un nouvel objet options à chaque accès.
    * Lit le token depuis le module-level variable, mis à jour par AuthContext.

@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { Heart, Loader2, Trash2, ShieldCheck } from 'lucide-react'
-import { useGetMyShortlist, useRemoveFromShortlist } from '../../api/useShortlist'
+import { getMyShortlistSession, removeFromShortlistSession } from '../../api/useShortlist'
 
 const AVAILABILITY_LABELS = {
   available: { label: 'Disponible', color: 'text-green-400 bg-green-900/30 border-green-800/40' },
@@ -29,7 +29,7 @@ export function MyShortlist() {
   useEffect(() => {
     const fetchShortlist = async () => {
       setLoading(true)
-      const result = await useGetMyShortlist()
+      const result = await getMyShortlistSession()
       if (result.success) {
         setShortlist(result.data || [])
       } else {
@@ -43,7 +43,7 @@ export function MyShortlist() {
 
   const handleRemove = async (artworkId) => {
     setRemovingId(artworkId)
-    const result = await useRemoveFromShortlist(artworkId)
+    const result = await removeFromShortlistSession(artworkId)
     if (result.success) {
       setShortlist((prev) => prev.filter((item) => item.artwork_id !== artworkId))
     }

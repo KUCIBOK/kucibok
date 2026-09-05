@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
@@ -32,9 +32,10 @@ import { BudgetTracker } from '../../components/curator/BudgetTracker'
 import { LearningHub } from '../../components/curator/LearningHub'
 
 export default function Professional() {
+  const location = useLocation()
   const [toggle, setToggle] = useState(false)
   const { user, curatorProfile, subscription, loading } = useAuth()
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState(() => (location.search.includes('tab=sourcing') ? 1 : 0))
   const { lang } = useLang()
   const td = uiT[lang].dashboards.professional
 

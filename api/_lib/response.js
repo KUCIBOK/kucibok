@@ -1,3 +1,5 @@
+import { supabaseAdmin as defaultSupabaseAdmin } from './supabase.js';
+
 /**
  * response.js — Helpers de réponse HTTP standardisés pour les Vercel Functions.
  *
@@ -164,7 +166,7 @@ export function respondError(status, message) {
  * @param {object} supabaseAdmin - Client Supabase admin
  * @returns {Promise<object>}
  */
-export async function checkAuth(req, supabaseAdmin) {
+export async function checkAuth(req, supabaseAdmin = defaultSupabaseAdmin) {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.replace('Bearer ', '');
 
@@ -180,7 +182,18 @@ export async function checkAuth(req, supabaseAdmin) {
       return { error: 'Invalid or expired token', status: 401 };
     }
 
-    return { userId: user.id, user_id: user.id, user };
+    const { data: dbUser } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    return {
+      userId: user.id,
+      user_id: user.id,
+      role: dbUser?.role ?? 'buyer',
+      user: { ...user, role: dbUser?.role ?? 'buyer' },
+    };
   } catch (error) {
     console.error('[Auth Error]', error.message);
     return { error: 'Invalid token', status: 401 };

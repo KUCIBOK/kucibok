@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../ui'
 import { createLog } from '../../api/useLog'
 
 export function UserTableItemActions({ user }) {
+  const isActive = user?.isActive ?? user?.is_active ?? false
   const { setStatus, deleteUser } = useUsersContext()
   const { user: adminUser } = useAuth()
   const [state, setState] = useState({
@@ -34,7 +35,7 @@ export function UserTableItemActions({ user }) {
       setState((prev) => ({ ...prev, loading: true, confirmSuspend: false }))
       await setStatus(user?._id)
       createLog({
-        description: user?.isActive
+        description: isActive
           ? `Suspension de l'utilisateur "${user?.name}" (${user?.email})`
           : `Réactivation de l'utilisateur "${user?.name}" (${user?.email})`,
         userId: adminUser?._id,
@@ -48,7 +49,7 @@ export function UserTableItemActions({ user }) {
   return (
     <>
       <div className="flex items-center gap-1">
-        {user?.isActive ? (
+        {isActive ? (
           <button
             onClick={() => setState((prev) => ({ ...prev, confirmSuspend: true }))}
             className="rounded-full bg-kcb-ardoise p-2 hover:bg-kcb-ardoise transition flex items-center justify-center shadow-none border-none"
@@ -89,14 +90,14 @@ export function UserTableItemActions({ user }) {
         isOpen={state.confirmSuspend}
         onClose={() => setState((prev) => ({ ...prev, confirmSuspend: false }))}
         onConfirm={handleSetStatus}
-        title={user?.isActive ? "Suspendre l'utilisateur" : "Réactiver l'utilisateur"}
+        title={isActive ? "Suspendre l'utilisateur" : "Réactiver l'utilisateur"}
         message={
-          user?.isActive
+          isActive
             ? `Suspendre "${user?.name}" ? Il ne pourra plus se connecter.`
             : `Réactiver le compte de "${user?.name}" ?`
         }
-        confirmText={user?.isActive ? 'Suspendre' : 'Réactiver'}
-        variant={user?.isActive ? 'danger' : 'primary'}
+        confirmText={isActive ? 'Suspendre' : 'Réactiver'}
+        variant={isActive ? 'danger' : 'primary'}
         loading={state.loading}
       />
     </>

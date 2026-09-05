@@ -25,6 +25,14 @@ const Professional = lazy(() => import('../pages/dashboard/Professional'))
 const Advisor = lazy(() => import('../pages/dashboard/Advisor'))
 const SourcingArtworkDetail = lazy(() => import('../pages/dashboard/SourcingArtworkDetail'))
 const BuyerAccount = lazy(() => import('../pages/dashboard/BuyerAccount'))
+const CollectorDashboard = lazy(() => import('../components/collector/CollectorDashboard'))
+const DashboardHome = lazy(() => import('../components/collector/DashboardHome'))
+const MyCollection = lazy(() => import('../components/collector/MyCollection'))
+const DiscoveryCatalogue = lazy(() => import('../components/collector/DiscoveryCatalogue'))
+const FollowedArtists = lazy(() => import('../components/collector/FollowedArtists'))
+const PurchaseHistory = lazy(() => import('../components/collector/PurchaseHistory'))
+const DeliveryTracking = lazy(() => import('../components/collector/DeliveryTracking'))
+const CollectorProfile = lazy(() => import('../components/collector/CollectorProfile'))
 const Admin = lazy(() => import('../pages/dashboard/Admin'))
 const ArtworkCheckout = lazy(() => import('../pages/ArtworkCheckout'))
 const ArtworkPurchaseSuccess = lazy(() => import('../pages/ArtworkPurchaseSuccess'))
@@ -711,16 +719,80 @@ export function Router() {
             />
           </Route>
 
-          {/* Buyer account */}
+          {/* Collector dashboard */}
           <Route path="/account" element={<BuyerProtectedRoute />}>
             <Route
               path=""
               element={
                 <Suspense fallback={<PageLoader />}>
-                  <BuyerAccount />
+                  <CollectorDashboard />
                 </Suspense>
               }
-            />
+            >
+              {/* Dashboard Home */}
+              <Route
+                path=""
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <DashboardHome />
+                  </Suspense>
+                }
+              />
+              {/* Ma Collection */}
+              <Route
+                path="collection"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <MyCollection />
+                  </Suspense>
+                }
+              />
+              {/* Découverte */}
+              <Route
+                path="discovery"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <DiscoveryCatalogue />
+                  </Suspense>
+                }
+              />
+              {/* Suivi & Alertes */}
+              <Route
+                path="followed-artists"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <FollowedArtists />
+                  </Suspense>
+                }
+              />
+              {/* Mes Achats */}
+              <Route
+                path="purchases"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PurchaseHistory />
+                  </Suspense>
+                }
+              />
+              {/* Logistique */}
+              <Route
+                path="delivery"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <DeliveryTracking />
+                  </Suspense>
+                }
+              />
+              {/* Profil */}
+              <Route
+                path="profile"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <CollectorProfile />
+                  </Suspense>
+                }
+              />
+            </Route>
           </Route>
           <Route path="/dashboard/collector" element={<Navigate to="/account" replace />} />
 
@@ -763,6 +835,14 @@ export function Router() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Advisor />
+                </Suspense>
+              }
+            />
+            <Route
+              path="sourcing/:artworkId"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <SourcingArtworkDetail />
                 </Suspense>
               }
             />

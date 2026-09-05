@@ -9,6 +9,7 @@ import { requireAuth } from './_lib/auth.js'
 import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
 import DOMPurify from 'dompurify'
+import PDFDocument from 'pdfkit'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -25,9 +26,42 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const createPdfBuffer = (configure) => new Promise((resolve, reject) => {
+  const document = new PDFDocument({ size: 'A4', margin: 48 })
+  const chunks = []
+  document.on('data', (chunk) => chunks.push(chunk))
+  document.on('end', () => resolve(Buffer.concat(chunks)))
+  document.on('error', reject)
+  configure(document)
+  document.end()
+})
+
+const getArtistOwnedArtworks = async (userId) => {
+  const { data: artist } = await supabaseAdmin
+    .from('artists')
+    .select('id, name')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  let query = supabaseAdmin.from('artworks').select('*').order('created_at', { ascending: false })
+  query = artist?.id
+    ? query.or(`user_id.eq.${userId},artist_id.eq.${artist.id}`)
+    : query.eq('user_id', userId)
+  const { data, error } = await query
+  if (error) throw error
+  return { artist, artworks: data || [] }
+}
+
 // ✅ Send admin notification email via Resend
 const sendAdminNotification = async (subject, message, details = {}) => {
-  console.log('[AdminNotification] Sending to kucibok221@gmail.com —', subject)
+  console.log('[AdminNotification] Sending notification —', subject)
 
   try {
     if (!process.env.RESEND_API_KEY) {
@@ -44,8 +78,8 @@ const sendAdminNotification = async (subject, message, details = {}) => {
       for (const [key, value] of Object.entries(details)) {
         detailsHtml += `
           <tr style="border-bottom: 1px solid #e0e0e0;">
-            <td style="padding: 8px; font-weight: bold; color: #666;">${key}:</td>
-            <td style="padding: 8px;">${value}</td>
+            <td style="padding: 8px; font-weight: bold; color: #666;">${escapeHtml(key)}:</td>
+            <td style="padding: 8px;">${escapeHtml(value)}</td>
           </tr>
         `
       }
@@ -63,8 +97,8 @@ const sendAdminNotification = async (subject, message, details = {}) => {
         to: adminEmail,
         subject: `[KUCIBOK ADMIN] ${subject}`,
         html: `
-          <h2 style="color: #B8A67F;">🔔 ${subject}</h2>
-          <p>${message}</p>
+          <h2 style="color: #B8A67F;">🔔 ${escapeHtml(subject)}</h2>
+          <p>${escapeHtml(message)}</p>
           ${detailsHtml}
           <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
           <p style="color: #999; font-size: 12px;">Notification automatique — Ne pas répondre à cet email</p>
@@ -111,9 +145,9 @@ const sendConfirmationEmail = async (email, confirmationLink) => {
         html: `
           <h2>Bienvenue sur Kucibok</h2>
           <p>Cliquez sur le lien ci-dessous pour confirmer votre adresse email :</p>
-          <p><a href="${confirmationLink}" style="background-color: #B8A67F; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Confirmer mon email</a></p>
+          <p><a href="${escapeHtml(confirmationLink)}" style="background-color: #B8A67F; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Confirmer mon email</a></p>
           <p>Ou copiez ce lien :</p>
-          <p>${confirmationLink}</p>
+          <p>${escapeHtml(confirmationLink)}</p>
           <p>Ce lien expire dans 24 heures.</p>
         `,
       }),
@@ -415,6 +449,39 @@ export default async function handler(req, res) {
           count: artworksWithArtistNames.length,
           _debug: filterDiagnosis, // ✅ DEBUG INFO — remove in production
         })
+      }
+
+      // GET /api/artworks/my — Get artworks owned by the authenticated artist
+      if (req.method === 'GET' && s1 === 'my') {
+        const auth = await checkAuth(req)
+        if (!auth?.userId) {
+          return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+        }
+
+        const { data: artist } = await supabaseAdmin
+          .from('artists')
+          .select('id')
+          .eq('user_id', auth.userId)
+          .maybeSingle()
+
+        let query = supabaseAdmin
+          .from('artworks')
+          .select('*, artists(id, name)')
+          .order('created_at', { ascending: false })
+
+        if (artist?.id) {
+          query = query.or(`user_id.eq.${auth.userId},artist_id.eq.${artist.id}`)
+        } else {
+          query = query.eq('user_id', auth.userId)
+        }
+
+        const { data: artworks, error } = await query
+        if (error) {
+          console.error('[GET /api/artworks/my] Query error:', error)
+          return res.status(500).json({ error: error.message, artworks: [] })
+        }
+
+        return res.status(200).json(artworks || [])
       }
 
       // GET /api/artworks/:id — Get single artwork
@@ -763,9 +830,10 @@ export default async function handler(req, res) {
               .from('users')
               .insert({
                 id: authUser.id,
-                email: authUser.email,
                 role: 'buyer', // Default role
                 name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+                auth_provider: 'google',
+                is_active: true,
               })
 
             if (createError) {
@@ -787,12 +855,76 @@ export default async function handler(req, res) {
             success: true,
             data: {
               user: existingUser,
-              needs_role_selection: !existingUser.role || existingUser.role === 'buyer',
+              needs_role_selection:
+                existingUser.auth_provider === 'google' &&
+                (!existingUser.onboarding_completed || existingUser.role === 'buyer'),
             },
           })
         } catch (err) {
           console.error('[Google Callback Error]', err.message)
           return res.status(500).json({ error: err.message || 'OAuth callback failed' })
+        }
+      }
+
+      // POST /api/auth/set-role — Save the role selected after Google signup
+      if (req.method === 'POST' && s1 === 'set-role') {
+        try {
+          const auth = await checkAuth(req)
+          if (!auth?.userId) {
+            return res.status(auth?.status || 401).json({ error: auth?.error || 'Authentication required' })
+          }
+
+          const { role } = req.body || {}
+          const allowedRoles = ['buyer', 'artist', 'curator', 'advisor']
+          if (!allowedRoles.includes(role)) {
+            return res.status(400).json({ error: 'Invalid role' })
+          }
+
+          const { data: currentUser, error: currentUserError } = await supabaseAdmin
+            .from('users')
+            .select('id, role, name, country, auth_provider')
+            .eq('id', auth.userId)
+            .single()
+
+          if (currentUserError || !currentUser) {
+            return res.status(404).json({ error: 'User profile not found' })
+          }
+          if (currentUser.role !== 'buyer' || currentUser.auth_provider !== 'google') {
+            return res.status(403).json({ error: 'Role selection is only available after Google signup' })
+          }
+
+          const { data: updatedUser, error: updateError } = await supabaseAdmin
+            .from('users')
+            .update({ role, onboarding_completed: true })
+            .eq('id', auth.userId)
+            .select('id, name, role, country, auth_provider, onboarding_completed, is_active')
+            .single()
+
+          if (updateError) {
+            return res.status(500).json({ error: updateError.message })
+          }
+
+          if (role === 'artist') {
+            const { data: existingArtist } = await supabaseAdmin
+              .from('artists')
+              .select('id')
+              .eq('user_id', auth.userId)
+              .maybeSingle()
+
+            const { error: artistError } = existingArtist
+              ? { error: null }
+              : await supabaseAdmin
+              .from('artists')
+              .insert({ user_id: auth.userId, name: currentUser.name })
+            if (artistError) {
+              return res.status(500).json({ error: artistError.message })
+            }
+          }
+
+          return res.status(200).json({ data: { _id: updatedUser.id, ...updatedUser } })
+        } catch (err) {
+          console.error('[Set Initial Role Error]', err.message)
+          return res.status(500).json({ error: err.message || 'Role update failed' })
         }
       }
 
@@ -1214,46 +1346,43 @@ export default async function handler(req, res) {
           })
         }
 
-        const { data, error } = await supabaseAdmin
-          .from('subscriptions')
-          .select('*')
-          .eq('user_id', authUser.id)
-          .in('status', ['active', 'trial'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
+              const { artwork_id } = req.body || {}
+              if (!artwork_id) return res.status(400).json({ error: 'artwork_id requis' })
 
-        if (error && error.code !== 'PGRST116') {
-          // PGRST116 = no rows found
-          console.error('[GET /api/subscriptions/active] Query error:', error.message)
-          return res.status(500).json({ error: 'Subscription query failed' })
-        }
+              const { data: artwork, error: artworkError } = await supabaseAdmin
+                .from('artworks').select('*').eq('id', artwork_id).single()
+              if (artworkError || !artwork) return res.status(404).json({ error: 'Œuvre introuvable' })
+              if (artwork.status !== 'approved') return res.status(400).json({ error: 'L’œuvre doit être approuvée' })
 
-        return res.status(200).json({
-          success: true,
-          data: data || null,
-        })
-      }
-    }
+              const isAdmin = user.role === 'admin'
+              let isOwner = artwork.user_id === user.id
+              if (!isOwner && artwork.artist_id) {
+                const { data: ownerArtist } = await supabaseAdmin.from('artists').select('user_id').eq('id', artwork.artist_id).maybeSingle()
+                isOwner = ownerArtist?.user_id === user.id
+              }
+              if (!isAdmin && !isOwner) return res.status(403).json({ error: 'Accès refusé' })
 
-    // ─────────────────────────────────────────────────────────────
-    // SHORTLIST ROUTES
-    // ─────────────────────────────────────────────────────────────
-
-    if (s0 === 'shortlist') {
-      // POST /api/shortlist/:artworkId — Add to shortlist
-      if (req.method === 'POST' && s1) {
-        // ✅ CRITICAL: Require authentication
-        const user = await getAuthUser()
-        if (!user) return
-
-        // ✅ CRITICAL: Use authenticated user_id, NOT from body
-        const user_id = user.id
-        const artworkId = s1
-
-        if (!user_id || !artworkId) {
-          return res.status(400).json({ error: 'Missing artworkId' })
-        }
+              const { data: artist } = artwork.artist_id
+                ? await supabaseAdmin.from('artists').select('name').eq('id', artwork.artist_id).maybeSingle()
+                : { data: null }
+              const artistName = artist?.name || user.user_metadata?.name || 'Artiste Kucibok'
+              const kcbNumber = artwork.kucibok_id || `KCB-${Math.random().toString(36).slice(2, 10).toUpperCase()}`
+              const pdf = await createPdfBuffer((doc) => {
+                doc.fillColor('#B08D57').fontSize(24).text('CERTIFICAT KUCIBOK', { align: 'center' })
+                doc.moveDown(0.5).fillColor('#222').fontSize(12).text('Certificat d’authenticité et de provenance', { align: 'center' })
+                doc.moveDown(2).fontSize(16).text(artwork.title, { align: 'center' })
+                doc.moveDown().fontSize(11).text(`Artiste : ${artistName}`)
+                doc.text(`Identifiant KCB : ${kcbNumber}`)
+                doc.text(`Support : ${artwork.medium || 'Non renseigné'}`)
+                doc.text(`Dimensions : ${artwork.height || '—'} × ${artwork.width || '—'}`)
+                doc.text(`Émis le : ${new Date().toLocaleDateString('fr-FR')}`)
+                doc.moveDown(2).fontSize(10).fillColor('#555').text('Ce document certifie l’enregistrement de l’œuvre dans le Standard Kucibok. Vérification publique disponible sur kucibok.com.', { align: 'justify' })
+              })
+              const path = `certificates/${artwork_id}-${kcbNumber}.pdf`
+              const { error: uploadError } = await supabaseAdmin.storage.from('certificates').upload(path, pdf, { contentType: 'application/pdf', upsert: true })
+              if (uploadError) return res.status(500).json({ error: uploadError.message })
+              const { data, error } = await supabaseAdmin.from('artworks').update({ kucibok_id: kcbNumber, certificate_path: path }).eq('id', artwork_id).select().single()
+              if (error) return res.status(500).json({ error: error.message })
 
         try {
           const { data, error } = await supabaseAdmin
@@ -2026,13 +2155,54 @@ export default async function handler(req, res) {
 
           return res.status(201).json({
             success: true,
-            data,
+            data: { ...data, certificate_path: path, kucibok_id: kcbNumber },
             message: `Certificate ${kcbNumber} generated successfully`,
           })
         } catch (err) {
           console.error('[Certificate Exception]', err.message)
           return res.status(500).json({ error: err.message })
         }
+      }
+
+      // GET /api/certificates/url/:artworkId — signed download URL
+      if (req.method === 'GET' && s1 === 'url' && s2) {
+        const user = await getAuthUser()
+        if (!user) return
+        const { data: artwork } = await supabaseAdmin.from('artworks').select('user_id, artist_id, certificate_path').eq('id', s2).maybeSingle()
+        if (!artwork?.certificate_path) return res.status(404).json({ error: 'Certificat indisponible' })
+        let owner = artwork.user_id === user.id || user.role === 'admin'
+        if (!owner && artwork.artist_id) {
+          const { data: artist } = await supabaseAdmin.from('artists').select('user_id').eq('id', artwork.artist_id).maybeSingle()
+          owner = artist?.user_id === user.id
+        }
+        if (!owner) return res.status(403).json({ error: 'Accès refusé' })
+        const { data, error } = await supabaseAdmin.storage.from('certificates').createSignedUrl(artwork.certificate_path, 600)
+        if (error) return res.status(500).json({ error: error.message })
+        return res.status(200).json({ data: { certificate_url: data.signedUrl } })
+      }
+
+      // GET /api/certificates/portfolio — downloadable artist portfolio PDF
+      if (req.method === 'GET' && s1 === 'portfolio') {
+        const user = await getAuthUser()
+        if (!user) return
+        const { artist, artworks } = await getArtistOwnedArtworks(user.id)
+        const pdf = await createPdfBuffer((doc) => {
+          doc.fillColor('#B08D57').fontSize(26).text('PORTFOLIO ARTISTE', { align: 'center' })
+          doc.moveDown(0.5).fillColor('#222').fontSize(18).text(artist?.name || user.user_metadata?.name || 'Artiste Kucibok', { align: 'center' })
+          doc.moveDown().fontSize(10).fillColor('#666').text(`${artworks.length} œuvre(s) · Généré le ${new Date().toLocaleDateString('fr-FR')}`, { align: 'center' })
+          artworks.forEach((artwork, index) => {
+            if (index > 0) doc.addPage()
+            doc.moveDown(2).fillColor('#222').fontSize(20).text(artwork.title || 'Œuvre sans titre')
+            doc.moveDown(0.5).fontSize(11).text(`Statut : ${artwork.status || '—'}`)
+            doc.text(`Identifiant KCB : ${artwork.kucibok_id || 'En cours de certification'}`)
+            doc.text(`Médium : ${artwork.medium || '—'}`)
+            doc.text(`Catégorie : ${artwork.category || '—'}`)
+            doc.moveDown().fontSize(11).fillColor('#555').text(artwork.description || 'Aucune description renseignée.', { align: 'justify' })
+          })
+        })
+        res.setHeader('Content-Type', 'application/pdf')
+        res.setHeader('Content-Disposition', 'attachment; filename="portfolio-kucibok.pdf"')
+        return res.status(200).send(pdf)
       }
     }
 
@@ -2115,6 +2285,99 @@ export default async function handler(req, res) {
           console.error('[Comment Exception]', err.message)
           return res.status(500).json({ error: err.message })
         }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // SUPPORT TICKET ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'support-tickets') {
+      const supportUser = await getAuthUser()
+      if (!supportUser) return
+
+      if (req.method === 'GET' && s1 === 'my-tickets') {
+        const { data, error } = await supabaseAdmin
+          .from('support_tickets')
+          .select('*')
+          .eq('user_id', supportUser.id)
+          .order('created_at', { ascending: false })
+        if (error) return res.status(500).json({ error: 'Impossible de charger les tickets' })
+        return res.status(200).json({
+          tickets: (data || []).map((ticket) => ({ ...ticket, ticketId: ticket.ticketId || ticket.id })),
+        })
+      }
+
+      if (req.method === 'POST' && s1 === 'create') {
+        const { category, priority, subject, description } = req.body || {}
+        if (!subject?.trim() || !description?.trim()) {
+          return res.status(400).json({ error: 'Sujet et description requis' })
+        }
+        const { data, error } = await supabaseAdmin
+          .from('support_tickets')
+          .insert({
+            user_id: supportUser.id,
+            subject: subject.trim().slice(0, 200),
+            description: description.trim(),
+            status: 'open',
+            priority: priority || 'normal',
+          })
+          .select()
+          .single()
+        if (error) return res.status(500).json({ error: 'Impossible de créer le ticket' })
+        return res.status(201).json({ ticket: data ? { ...data, ticketId: data.id } : data })
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // REWARDS ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'rewards') {
+      const rewardsUser = await getAuthUser()
+      if (!rewardsUser) return
+
+      if (req.method === 'GET' && s1 === 'credits') {
+        const [{ data: credits }, { data: transactions }] = await Promise.all([
+          supabaseAdmin.from('artist_credits').select('balance, total_earned, total_spent').eq('artist_id', rewardsUser.id).maybeSingle(),
+          supabaseAdmin.from('artist_credit_transactions').select('*').eq('artist_id', rewardsUser.id).order('created_at', { ascending: false }).limit(50),
+        ])
+        return res.status(200).json({ data: { credits: credits || { balance: 0, total_earned: 0, total_spent: 0 }, transactions: transactions || [] } })
+      }
+
+      if (req.method === 'GET' && s1 === 'referrals') {
+        let { data: referral } = await supabaseAdmin.from('artist_referrals').select('*').eq('referrer_id', rewardsUser.id).is('referred_id', null).maybeSingle()
+        if (!referral) {
+          const code = `KCB-${rewardsUser.id.slice(0, 8).toUpperCase()}`
+          const { data: created } = await supabaseAdmin.from('artist_referrals').insert({ referrer_id: rewardsUser.id, referral_code: code }).select('*').single()
+          referral = created
+        }
+        const { data: referrals } = await supabaseAdmin.from('artist_referrals').select('*').eq('referrer_id', rewardsUser.id).order('created_at', { ascending: false })
+        return res.status(200).json({ data: { code: referral?.referral_code || null, referrals: referrals || [] } })
+      }
+
+      if (req.method === 'GET' && s1 === 'products') {
+        const { data, error } = await supabaseAdmin.from('artist_products').select('*').eq('is_active', true).order('created_at', { ascending: true })
+        if (error) return res.status(500).json({ error: 'Impossible de charger la boutique' })
+        return res.status(200).json({ data: data || [] })
+      }
+
+      if (req.method === 'GET' && s1 === 'orders') {
+        const { data, error } = await supabaseAdmin.from('artist_orders').select('*, artist_products(name)').eq('artist_id', rewardsUser.id).order('created_at', { ascending: false })
+        if (error) return res.status(500).json({ error: 'Impossible de charger les commandes' })
+        return res.status(200).json({ data: data || [] })
+      }
+
+      if (req.method === 'POST' && s1 === 'orders') {
+        const { product_id } = req.body || {}
+        const { data: product } = await supabaseAdmin.from('artist_products').select('id, credits_cost, stock, is_active').eq('id', product_id).single()
+        if (!product?.is_active || (product.stock !== -1 && product.stock <= 0)) return res.status(400).json({ error: 'Produit indisponible' })
+        const { data: credits } = await supabaseAdmin.from('artist_credits').select('balance').eq('artist_id', rewardsUser.id).maybeSingle()
+        if (!credits || credits.balance < product.credits_cost) return res.status(400).json({ error: 'Crédits insuffisants' })
+        const { data: order, error } = await supabaseAdmin.from('artist_orders').insert({ artist_id: rewardsUser.id, product_id, credits_spent: product.credits_cost }).select().single()
+        if (error) return res.status(500).json({ error: 'Impossible de créer la commande' })
+        await supabaseAdmin.from('artist_credits').update({ balance: credits.balance - product.credits_cost }).eq('artist_id', rewardsUser.id)
+        return res.status(201).json({ data: order })
       }
     }
 
@@ -2691,7 +2954,7 @@ export default async function handler(req, res) {
 
         const { data: users, error: err } = await supabaseAdmin
           .from('users')
-          .select('id, name, email, role, country, is_active, created_at')
+          .select('id, name, username, role, country, telephone, is_active, created_at')
           .order('created_at', { ascending: false })
           .limit(parseInt(limit))
 

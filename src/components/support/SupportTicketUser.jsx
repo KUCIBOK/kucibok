@@ -15,6 +15,7 @@ export default function SupportTicketUser() {
   })
   const [newResponse, setNewResponse] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState('')
 
   useEffect(() => {
     loadTickets()
@@ -37,6 +38,7 @@ export default function SupportTicketUser() {
   const handleCreateTicket = async (e) => {
     e.preventDefault()
     setSubmitting(true)
+    setFormError('')
 
     try {
       const response = await fetch(`${utils.api}/support-tickets/create`, {
@@ -54,9 +56,12 @@ export default function SupportTicketUser() {
         })
         setIsModalOpen(false)
         loadTickets()
+      } else {
+        const data = await response.json().catch(() => ({}))
+        setFormError(data.error || 'Impossible de créer le ticket.')
       }
     } catch (error) {
-      // Silenced for production
+      setFormError(error.message || 'Impossible de créer le ticket.')
     } finally {
       setSubmitting(false)
     }
@@ -261,6 +266,7 @@ export default function SupportTicketUser() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-kcb-ardoise border border-white/[0.06] rounded-[4px] max-w-lg w-full p-6 max-h-96 overflow-y-auto">
             <h2 className="text-2xl font-bold text-white mb-4">Créer un ticket</h2>
+            {formError && <p className="mb-3 text-sm text-red-300">{formError}</p>}
 
             <form onSubmit={handleCreateTicket} className="space-y-4">
               <div>

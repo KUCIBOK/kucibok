@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Activity,
   Briefcase,
@@ -29,8 +29,9 @@ import { AdvisorAbonnement } from '../../components/advisor/AdvisorAbonnement'
 import { Profile } from '../../components/professional/Profile'
 
 export default function Advisor() {
+  const location = useLocation()
   const { user, advisorProfile, subscription, loading } = useAuth()
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState(() => (location.search.includes('tab=sourcing') ? 7 : 0))
   const [toggle, setToggle] = useState(false)
   const { lang } = useLang()
   const td = uiT[lang].dashboards.advisor

@@ -7,7 +7,7 @@ import { getAllVisitors } from '../../api/useVisitor'
 import { Modal, Input, Select, Button, toast } from '../ui'
 
 export function UsersTab() {
-  const { artists, buyers, curators, users } = useUsersContext()
+  const { artists, buyers, curators, users, loading } = useUsersContext()
   const { user } = useAuth()
   const [state, setState] = useState({
     addUser: false,
@@ -49,33 +49,41 @@ export function UsersTab() {
               <span>Utilisateurs totaux</span>
               <Users className="w-4 h-4 text-kcb-pierre" />
             </div>
-            <span className="text-xl font-bold text-white mt-1">{users?.length}</span>
+            <span className="text-xl font-bold text-white mt-1 tabular-nums">
+              {loading ? 'â€”' : users?.length ?? 0}
+            </span>
           </div>
           <div className="w-full rounded-[4px] p-4 bg-kcb-noir/80 text-sm flex flex-col gap-1">
             <div className="flex justify-between items-center text-white/70 text-xs">
               <span>Artistes</span>
               <Image className="w-4 h-4 text-kcb-pierre" />
             </div>
-            <span className="text-xl font-bold text-white mt-1">{artists?.length}</span>
+            <span className="text-xl font-bold text-white mt-1 tabular-nums">
+              {loading ? 'â€”' : artists?.length ?? 0}
+            </span>
           </div>
           <div className="w-full rounded-[4px] p-4 bg-kcb-noir/80 text-sm flex flex-col gap-1">
             <div className="flex justify-between items-center text-white/70 text-xs">
               <span>Collectionneurs</span>
               <User className="w-4 h-4 text-kcb-pierre" />
             </div>
-            <span className="text-xl font-bold text-white mt-1">{buyers?.length}</span>
+            <span className="text-xl font-bold text-white mt-1 tabular-nums">
+              {loading ? 'â€”' : buyers?.length ?? 0}
+            </span>
           </div>
           <div className="w-full rounded-[4px] p-4 bg-kcb-noir/80 text-sm flex flex-col gap-1">
             <div className="flex justify-between items-center text-white/70 text-xs">
               <span>Professionnels</span>
               <Shield className="w-4 h-4 text-kcb-pierre" />
             </div>
-            <span className="text-xl font-bold text-white mt-1">{curators?.length}</span>
+            <span className="text-xl font-bold text-white mt-1 tabular-nums">
+              {loading ? 'â€”' : curators?.length ?? 0}
+            </span>
           </div>
         </div>
 
         <div className="my-6">
-          <UsersTable users={users.filter((item) => item?._id !== user?._id)} />
+          {!loading && <UsersTable users={users.filter((item) => item?._id !== user?._id)} />}
         </div>
       </div>
       {state?.addUser && <AddUserModal closeModal={() => setState({ ...state, addUser: false })} />}
@@ -109,14 +117,14 @@ function AddUserModal({ closeModal }) {
         password: state.password,
       })
       if (user?._id) {
-        toast.success('? Admin ajouté')
+        toast.success('? Admin ajoutï¿½')
         closeModal()
       } else {
-        toast.error('× ' + (user?.error || 'Erreur'))
+        toast.error('ï¿½ ' + (user?.error || 'Erreur'))
       }
       setState((s) => ({ ...s, loading: false }))
     } catch (error) {
-      toast.error('× Erreur serveur')
+      toast.error('ï¿½ Erreur serveur')
       setState((s) => ({ ...s, loading: false }))
     }
   }
@@ -154,7 +162,7 @@ function AddUserModal({ closeModal }) {
         />
 
         <Select
-          label="Rôle"
+          label="Rï¿½le"
           options={roleOptions}
           value={state.role}
           onChange={(value) => setState((s) => ({ ...s, role: value }))}

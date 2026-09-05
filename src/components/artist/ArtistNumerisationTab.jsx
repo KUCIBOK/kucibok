@@ -51,10 +51,10 @@ function StatusBadge({ status }) {
  * @returns {JSX.Element}
  */
 export function ArtistNumerisationTab() {
-  const { myArtworks, loading } = useMyArtworks() /* ✨ React Query */
+  const { myArtworks, loading: artworksLoading } = useMyArtworks() /* ✨ React Query */
 
   const [requests, setRequests] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [requestsLoading, setRequestsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -70,7 +70,7 @@ export function ArtistNumerisationTab() {
 
   /** Charge les demandes de numérisation de l'artiste connecté. */
   const fetchRequests = useCallback(async () => {
-    setLoading(true)
+    setRequestsLoading(true)
     setError(null)
     const data = await getMyNumerisationRequests()
     if (data?.error) {
@@ -78,7 +78,7 @@ export function ArtistNumerisationTab() {
     } else {
       setRequests(Array.isArray(data) ? data : [])
     }
-    setLoading(false)
+    setRequestsLoading(false)
   }, [])
 
   useEffect(() => {
@@ -182,32 +182,32 @@ export function ArtistNumerisationTab() {
         <KPICard
           icon={Scan}
           label="Total demandes"
-          value={loading ? '—' : total}
-          loading={loading}
+          value={requestsLoading ? '—' : total}
+          loading={requestsLoading}
           iconColor="text-kcb-or"
           iconBgColor="bg-kcb-or/10"
         />
         <KPICard
           icon={Clock}
           label="En attente"
-          value={loading ? '—' : pending}
-          loading={loading}
+          value={requestsLoading ? '—' : pending}
+          loading={requestsLoading}
           iconColor="text-yellow-400"
           iconBgColor="bg-yellow-900/20"
         />
         <KPICard
           icon={RefreshCw}
           label="En cours"
-          value={loading ? '—' : processing}
-          loading={loading}
+          value={requestsLoading ? '—' : processing}
+          loading={requestsLoading}
           iconColor="text-kcb-or"
           iconBgColor="bg-kcb-or/10"
         />
         <KPICard
           icon={CheckCircle}
           label="Terminées"
-          value={loading ? '—' : delivered}
-          loading={loading}
+          value={requestsLoading ? '—' : delivered}
+          loading={requestsLoading}
           iconColor="text-green-400"
           iconBgColor="bg-green-900/20"
         />
@@ -330,7 +330,7 @@ export function ArtistNumerisationTab() {
           </h3>
         </div>
 
-        {loading ? (
+        {requestsLoading || artworksLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-kcb-or" />
           </div>

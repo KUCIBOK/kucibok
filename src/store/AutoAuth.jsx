@@ -32,6 +32,11 @@ export function AutoAuth() {
   const { user } = useAuth()
 
   useEffect(() => {
+    // OAuthCallback doit traiter la session et role-selection doit rester affiché.
+    if (window.location.pathname === '/auth/callback' || window.location.pathname === '/auth/role-selection') {
+      return
+    }
+
     // Redirige vers le dashboard uniquement après un callback OAuth
     const isOAuthCallback = window.location.hash.includes('access_token')
     if (isOAuthCallback && user?.role && DASHBOARD_BY_ROLE[user.role]) {

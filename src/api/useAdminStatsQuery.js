@@ -14,6 +14,7 @@ async function fetchAdminStats() {
 }
 
 export function useAdminStats() {
+  const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: fetchAdminStats,

@@ -1,10 +1,13 @@
 import { useState, useMemo } from 'react'
-import { ShieldCheck, Shield, ExternalLink, Info, FileQuestion } from 'lucide-react'
+import { ShieldCheck, Shield, ExternalLink, Info, FileQuestion, Download, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useMyArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
 import { KPICard } from '../ui'
 import { useT } from '../../i18n'
 import { artistT } from '../../i18n/artist'
+import { useAuth } from '../../store/AuthContext'
+import { downloadArtistPortfolio } from '../../api/useArtistPortfolio'
+import { GenerateCertificateAction } from '../artworks/GenerateCertificateAction'
 
 /** Badge de statut d'approbation de l'œuvre. */
 function ArtworkStatusBadge({ status, labels }) {
@@ -40,7 +43,9 @@ function ArtworkStatusBadge({ status, labels }) {
  */
 export function ArtistCertificationTab() {
   const t = useT(artistT).certifications
+  const { user } = useAuth()
   const { myArtworks, loading } = useMyArtworks() /* ✨ React Query */
+  const [portfolioLoading, setPortfolioLoading] = useState(false)
 
   const KCB_FILTERS = [
     { value: 'all', label: t.filters.all },
@@ -49,6 +54,15 @@ export function ArtistCertificationTab() {
   ]
 
   const [filter, setFilter] = useState('all')
+
+  const handleDownloadPortfolio = async () => {
+    setPortfolioLoading(true)
+    try {
+      await downloadArtistPortfolio()
+    } finally {
+      setPortfolioLoading(false)
+    }
+  }
 
   const artworks = myArtworks ?? []
 
@@ -71,7 +85,8 @@ export function ArtistCertificationTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
         <div className="bg-kcb-or/10 text-kcb-or p-2.5 rounded-[4px]">
           <ShieldCheck className="w-5 h-5" />
         </div>
@@ -79,6 +94,16 @@ export function ArtistCertificationTab() {
           <h2 className="text-xl font-bold text-white">{t.title}</h2>
           <p className="text-sm text-kcb-pierre">{t.subtitle}</p>
         </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleDownloadPortfolio}
+          disabled={portfolioLoading || artworks.length === 0}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-[4px] bg-kcb-or text-kcb-noir text-xs font-semibold disabled:opacity-50"
+        >
+          {portfolioLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          Télécharger mon portfolio PDF
+        </button>
       </div>
 
       {/* KPIs */}
@@ -213,14 +238,12 @@ export function ArtistCertificationTab() {
                       <Shield className="w-4 h-4 text-kcb-pierre shrink-0" />
                       <span className="text-kcb-pierre text-xs">{t.notCertified}</span>
                       {artwork.status === 'approved' && (
-                        <Link
-                          to="/dashboard/submit-artwork"
-                          className="text-kcb-or hover:text-kcb-or/80 text-xs font-medium underline transition-colors"
-                        >
-                          {t.request}
-                        </Link>
+                        <GenerateCertificateAction artwork={artwork} user={user} />
                       )}
                     </div>
+                  )}
+                  {artwork.kucibok_id && (
+                    <GenerateCertificateAction artwork={artwork} user={user} />
                   )}
                 </div>
               </div>

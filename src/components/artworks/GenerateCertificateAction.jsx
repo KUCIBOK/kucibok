@@ -123,7 +123,7 @@ export const GenerateCertificateAction = memo(function GenerateCertificateAction
     )
   }
 
-  if (user?.role === 'admin') {
+  if (user?.role === 'admin' || user?.role === 'artist') {
     return (
       <button
         onClick={handleGenerate}

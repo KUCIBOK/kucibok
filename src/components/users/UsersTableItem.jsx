@@ -2,6 +2,8 @@
 import { UserTableItemActions } from './UsersTableItemActions'
 
 export function UsersTableItem({ user }) {
+  const isActive = user?.isActive ?? user?.is_active ?? false
+
   return (
     <>
       <tr className="align-middle hover:bg-kcb-ardoise/60 transition">
@@ -19,7 +21,7 @@ export function UsersTableItem({ user }) {
           {user?.role == 'curator' && 'Curateur'}
         </td>
         <td className="align-middle">
-          {user?.isActive ? (
+          {isActive ? (
             <span className="inline-block rounded-full bg-green-700/20 text-green-400 px-3 py-0.5 text-xs font-medium">
               Actif
             </span>

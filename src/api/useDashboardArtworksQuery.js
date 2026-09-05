@@ -134,3 +134,33 @@ export function useDashboardStats() {
     isLoading: pending.isLoading || approved.isLoading || rejected.isLoading,
   }
 }
+
+/**
+ * Fetch priority access artworks (for collector discovery)
+ */
+async function fetchPriorityAccessArtworks() {
+  if (!utils.token) return { artworks: [], count: 0 }
+  const res = await fetch(`${utils.api}/artworks/priority-access`, utils.options)
+  if (!res.ok) throw new Error('Failed to fetch priority access artworks')
+  return res.json()
+}
+
+/**
+ * Hook: Get priority access artworks (collector discovery)
+ * ✅ 5 min cache (priority items change frequently)
+ * ✅ Auth required (collector only)
+ *
+ * Usage:
+ *   const { data: priority } = usePriorityAccessArtworks()
+ */
+export function usePriorityAccessArtworks() {
+  return useQuery({
+    queryKey: ['artworks', 'priority-access'],
+    queryFn: fetchPriorityAccessArtworks,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 15,
+    retry: 1,
+    refetchOnWindowFocus: true,
+    enabled: !!utils.token,
+  })
+}

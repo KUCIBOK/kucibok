@@ -8,10 +8,13 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { ShieldCheck, SlidersHorizontal, Search, X, Loader2, Heart, FileText } from 'lucide-react'
 import { getCataloguePro } from '../../api/useSourcing'
-import { useAddToShortlist, useRemoveFromShortlist } from '../../api/useShortlist'
+import {
+  addToShortlistSession,
+  removeFromShortlistSession,
+} from '../../api/useShortlist'
 import { ShortlistGate } from '../shared/ShortlistGate'
 import { canShortlist } from '../../utils/planUtils'
 import { useAuth } from '../../store/AuthContext'
@@ -21,6 +24,16 @@ const AVAILABILITY_LABELS = {
   on_exhibition: { label: 'En exposition', color: 'text-yellow-400 bg-yellow-900/30 border-yellow-800/40' },
   on_request: { label: 'Sur demande', color: 'text-kcb-or bg-kcb-or/10 border-kcb-or/30' },
   unavailable: { label: 'Indisponible', color: 'text-red-400 bg-red-900/30 border-red-800/40' },
+}
+
+const SOLD_LABEL = {
+  label: 'Vendu',
+  color: 'text-red-300 bg-red-900/30 border-red-700/40',
+}
+
+const PRIVATE_COLLECTION_LABEL = {
+  label: 'Collection privée',
+  color: 'text-kcb-or bg-kcb-or/10 border-kcb-or/30',
 }
 
 const AVAILABILITY_OPTIONS = [
@@ -56,12 +69,12 @@ function ArtworkShortlistButton({ artworkId, isShortlisted, onToggle }) {
     setLoading(true)
     try {
       if (isShortlisted) {
-        const result = await useRemoveFromShortlist(artworkId)
+        const result = await removeFromShortlistSession(artworkId)
         if (result.success) {
           onToggle(false)
         }
       } else {
-        const result = await useAddToShortlist(artworkId)
+        const result = await addToShortlistSession(artworkId)
         if (result.success) {
           onToggle(true)
         }
@@ -88,6 +101,10 @@ function ArtworkShortlistButton({ artworkId, isShortlisted, onToggle }) {
 }
 
 export function CuratorCatalogue() {
+  const location = useLocation()
+  const dashboardBase = location.pathname.startsWith('/dashboard/advisor')
+    ? '/dashboard/advisor'
+    : '/dashboard/curator'
   const { subscription } = useAuth()
   const canShortlistFeature = canShortlist(subscription)
 
@@ -261,8 +278,16 @@ export function CuratorCatalogue() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {shuffledData().map((artwork) => {
-            const avail = artwork.availabilityStatus
-              ? AVAILABILITY_LABELS[artwork.availabilityStatus]
+            const isSold = artwork.sold === true || artwork.status === 'sold'
+            const artistName = artwork.artist?.trim?.() || ''
+            const isPrivateCollection = ['unknown', 'unknown artist'].includes(artistName.toLowerCase())
+            const availabilityStatus = artwork.availabilityStatus || artwork.availability_status
+            const avail = isPrivateCollection
+              ? PRIVATE_COLLECTION_LABEL
+              : isSold
+              ? SOLD_LABEL
+              : availabilityStatus
+                ? AVAILABILITY_LABELS[availabilityStatus]
               : null
             return (
               <div
@@ -310,20 +335,19 @@ export function CuratorCatalogue() {
                   <h3 className="text-white font-semibold text-sm leading-snug line-clamp-1">
                     {artwork.title}
                   </h3>
-                  <p className="text-kcb-pierre text-xs mt-0.5">{artwork.artist}</p>
+                  {isPrivateCollection ? (
+                    <p className="text-kcb-or text-xs mt-0.5">Collection privée</p>
+                  ) : (
+                    <p className="text-kcb-pierre text-xs mt-0.5">{artwork.artist}</p>
+                  )}
                   {artwork.medium && (
                     <p className="text-kcb-pierre text-xs mt-0.5 italic">{artwork.medium}</p>
-                  )}
-                  {artwork.price > 0 && (
-                    <p className="text-white text-sm font-medium mt-2">
-                      {artwork.price.toLocaleString('fr-FR')} {artwork.currency}
-                    </p>
                   )}
 
                   {/* Actions */}
                   <div className="mt-auto pt-3 flex gap-2">
                     {/* Shortlist Button */}
-                    {canShortlistFeature ? (
+                    {canShortlistFeature && !isSold ? (
                       <ArtworkShortlistButton
                         artworkId={artwork.id}
                         isShortlisted={shortlistedSet.has(artwork.id)}
@@ -334,6 +358,10 @@ export function CuratorCatalogue() {
                           setShortlistedSet(newSet)
                         }}
                       />
+                    ) : isSold ? (
+                      <span className="flex-1 text-center text-xs py-1.5 rounded-[4px] border border-red-700/30 text-red-300">
+                        Vendu
+                      </span>
                     ) : (
                       <ShortlistGate minimal>
                         <button
@@ -348,7 +376,7 @@ export function CuratorCatalogue() {
 
                     {/* Detail Link Button */}
                     <Link
-                      to={`/dashboard/curator/sourcing/${artwork.id || artwork._id}`}
+                      to={`${dashboardBase}/sourcing/${artwork.id || artwork._id}`}
                       className="flex-1 text-xs py-1.5 rounded-[4px] bg-kcb-or hover:bg-kcb-or/90 text-white transition flex items-center justify-center gap-1"
                     >
                       <FileText className="w-3 h-3" />

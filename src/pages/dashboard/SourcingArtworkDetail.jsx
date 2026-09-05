@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
 import {
   ArrowLeft,
   ShieldCheck,
@@ -14,7 +14,10 @@ import {
   Globe,
 } from 'lucide-react'
 import { getCataloguePro } from '../../api/useSourcing'
-import { useAddToShortlist, useRemoveFromShortlist } from '../../api/useShortlist'
+import {
+  addToShortlistSession,
+  removeFromShortlistSession,
+} from '../../api/useShortlist'
 import { useAuth } from '../../store/AuthContext'
 import { canShortlist } from '../../utils/planUtils'
 import { ShortlistGate } from '../../components/shared/ShortlistGate'
@@ -46,7 +49,12 @@ function sanitizeHTML(html) {
 export default function SourcingArtworkDetail() {
   const { artworkId } = useParams()
   const navigate = useNavigate()
-  const { subscription } = useAuth()
+  const location = useLocation()
+  const { subscription, user } = useAuth()
+  const dashboardBase = location.pathname.startsWith('/dashboard/advisor')
+    ? '/dashboard/advisor'
+    : '/dashboard/curator'
+  const cataloguePath = `${dashboardBase}?tab=sourcing`
   const canShortlistFeature = canShortlist(subscription)
 
   const [artwork, setArtwork] = useState(null)
@@ -100,10 +108,10 @@ export default function SourcingArtworkDetail() {
     setShortlistLoading(true)
     try {
       if (isShortlisted) {
-        const result = await useRemoveFromShortlist(artworkId)
+        const result = await removeFromShortlistSession(artworkId)
         if (result.success) setIsShortlisted(false)
       } else {
-        const result = await useAddToShortlist(artworkId)
+        const result = await addToShortlistSession(artworkId)
         if (result.success) setIsShortlisted(true)
       }
     } finally {
@@ -123,7 +131,7 @@ export default function SourcingArtworkDetail() {
     return (
       <div className="min-h-screen bg-kcb-noir text-white pt-8 px-4">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate(cataloguePath, { replace: true })}
           className="flex items-center gap-2 text-kcb-or hover:text-kcb-or/80 mb-8 transition"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -154,7 +162,7 @@ export default function SourcingArtworkDetail() {
         {/* Header */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate(cataloguePath, { replace: true })}
             className="flex items-center gap-2 text-kcb-or hover:text-kcb-or/80 mb-6 transition text-sm"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -451,7 +459,7 @@ export default function SourcingArtworkDetail() {
               {portfolioWorks.map((work) => (
                 <Link
                   key={work.id || work._id}
-                  to={`/dashboard/curator/sourcing/${work.id || work._id}`}
+                    to={`${dashboardBase}/sourcing/${work.id || work._id}`}
                   className="group bg-kcb-ardoise border border-white/[0.06] rounded-[4px] overflow-hidden hover:border-kcb-or/30 transition flex flex-col h-full"
                 >
                   <div className="relative aspect-square overflow-hidden bg-kcb-noir">

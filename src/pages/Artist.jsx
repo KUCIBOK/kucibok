@@ -13,7 +13,7 @@ import RevealOnScroll from '../components/landing/RevealOnScroll'
 
 export default function ArtistDetails() {
   const { id } = useParams()
-  const tabs = ['Oeuvres', 'Biographie']
+  const tabs = ['Oeuvres', 'Biographie', 'Expositions']
   const { data: artistProfile } = useArtistProfile() /* ✨ React Query */
 
   const [state, setState] = useState({
@@ -67,6 +67,44 @@ export default function ArtistDetails() {
             ></span>
           </div>
         )
+      case 2: {
+        const exhibitions = state?.artist?.exhibitions ?? state?.artist?.expositions ?? []
+        const items = Array.isArray(exhibitions) ? exhibitions : []
+        return (
+          <div className="space-y-4 text-kcb-sable">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Expositions et parcours</h2>
+              <p className="text-sm text-kcb-pierre mt-1">
+                Expositions, foires, biennales et collaborations de l’artiste.
+              </p>
+            </div>
+            {items.length > 0 ? (
+              <div className="space-y-3">
+                {items.map((item, index) => {
+                  const exhibition = typeof item === 'string' ? { title: item } : item
+                  return (
+                    <div key={exhibition.id ?? index} className="border-l-2 border-kcb-or/60 pl-4">
+                      <p className="text-white font-medium">{exhibition.title || exhibition.name}</p>
+                      {(exhibition.venue || exhibition.location || exhibition.year) && (
+                        <p className="text-sm text-kcb-pierre">
+                          {[exhibition.venue, exhibition.location, exhibition.year]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      )}
+                      {exhibition.description && (
+                        <p className="text-sm text-kcb-pierre mt-1">{exhibition.description}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-kcb-pierre">Aucune exposition renseignée pour le moment.</p>
+            )}
+          </div>
+        )
+      }
 
       default:
         return (

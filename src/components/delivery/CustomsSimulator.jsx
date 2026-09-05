@@ -6,7 +6,7 @@ export function CustomsSimulator() {
   const { makeToast } = useToast()
   const [formData, setFormData] = useState({
     artworkValue: '',
-    artworkCategory: 'painting', // painting, sculpture, jewelry, other
+    artworkCategory: 'paintings', // paintings, sculptures, jewelry, other
     originCountry: 'SN', // Senegal
     destinationCountry: 'FR',
     weight: '1',
@@ -98,7 +98,8 @@ export function CustomsSimulator() {
         ],
       })
     } catch (error) {
-      // Calculation failed silently
+      makeToast('Erreur', 'error', 'Impossible de calculer les frais. Vérifiez les valeurs saisies.')
+      setResults(null)
     }
 
     setLoading(false)
