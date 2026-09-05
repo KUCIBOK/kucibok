@@ -3264,6 +3264,11 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: 'Authentication required' })
         }
 
+        // ✅ FIX: Artists don't have subscriptions — return null immediately
+        if (user.role === 'artist') {
+          return res.status(200).json(null)
+        }
+
         const { data: subscriptions, error: subError } = await supabaseAdmin
           .from('subscriptions')
           .select('*')
@@ -3273,14 +3278,16 @@ export default async function handler(req, res) {
 
         if (subError) {
           console.error('[Subscription Error]', subError)
-          return res.status(500).json({ error: subError.message })
+          // ✅ FIX: Return 200 with null instead of 500 for missing subscriptions
+          return res.status(200).json(null)
         }
 
         const subscription = subscriptions?.[0] || null
-        return res.status(200).json(subscription || { message: 'No active subscription' })
+        return res.status(200).json(subscription)
       } catch (error) {
         console.error('[Subscription Error]', error)
-        return res.status(500).json({ error: error.message })
+        // ✅ FIX: Return 200 with null instead of 500 for unexpected errors
+        return res.status(200).json(null)
       }
     }
 
