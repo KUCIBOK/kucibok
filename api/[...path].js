@@ -373,8 +373,21 @@ export default async function handler(req, res) {
         // - If fetching for PUBLIC (no artist_id/user_id): Only show 'approved' artworks
         // - If fetching for the OWNER (artist_id or user_id): Return ALL artworks (they own them)
         // - If fetching for ADMIN: Can see pending, rejected, etc
-        const hasOwnerFilter = artist_id || user_id
-        const statusToApply = status || (hasOwnerFilter ? null : 'approved')
+        // Seuls l'admin/curator ou le propriétaire authentifié voient tous les statuts.
+        // Tout autre appelant (anonyme ou non propriétaire) reçoit uniquement les œuvres approuvées.
+        const caller = await checkAuth(req)
+        const isPrivileged = !caller.error && ['admin', 'curator'].includes(caller.role)
+        let isOwner = !caller.error && !!user_id && user_id === caller.userId
+        if (!caller.error && !isOwner && artist_id) {
+          const { data: ownArtist } = await supabaseAdmin
+            .from('artists')
+            .select('id')
+            .eq('id', artist_id)
+            .eq('user_id', caller.userId)
+            .maybeSingle()
+          isOwner = !!ownArtist
+        }
+        const statusToApply = (isPrivileged || isOwner) ? (status || null) : 'approved'
 
         // Apply all filters FIRST (before select with relations)
         if (statusToApply) query = query.eq('status', statusToApply)
@@ -2186,6 +2199,12 @@ export default async function handler(req, res) {
     // DEBUG ENDPOINT: Test profile fix for Missira
     if (s0 === 'debug' && s1 === 'missira-profile') {
       try {
+        // Diagnostic réservé aux admins
+        const debugAuth = await checkAuth(req)
+        if (debugAuth.error || debugAuth.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
         // Find Missira's user_id
         const { data: missiraUser } = await supabaseAdmin
           .from('users')
@@ -3110,6 +3129,12 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'audit-thugmoc' && req.method === 'GET') {
       try {
+        // Diagnostic réservé aux admins (expose des données utilisateurs)
+        const auditAuth = await checkAuth(req)
+        if (auditAuth.error || auditAuth.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
         const { email = 'thugmoc@gmail.com' } = req.query
 
         console.log(`[Audit] Deep diagnostic for: ${email}`)

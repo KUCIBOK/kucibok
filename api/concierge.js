@@ -403,7 +403,7 @@ export default async function handler(req, res) {
   }
 
   // Protected routes below
-  const auth = checkAuth(req)
+  const auth = await checkAuth(req)
   if (auth.error) return respondError(auth.status, auth.error)(res)
 
   const userId = auth.userId

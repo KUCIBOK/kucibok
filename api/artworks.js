@@ -67,10 +67,8 @@ export default async function handler(req, res) {
       .select('*, artists(id, name)')
       .order('created_at', { ascending: false })
 
-    // Optionally filter by status if provided
-    if (status && status !== 'all') {
-      query = query.eq('status', status)
-    }
+    // Public endpoint: only approved artworks are ever returned (rejected/pending stay hidden)
+    query = query.eq('status', 'approved')
 
     query = query.limit(300)
     const { data, error } = await query
