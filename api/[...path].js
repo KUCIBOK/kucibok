@@ -253,15 +253,25 @@ export default async function handler(req, res) {
     }
 
     // ✅ Helper function: Sanitize HTML to prevent XSS
+    // DOMPurify n'a pas de DOM en Node (sanitize indéfini) : filtre à liste blanche sans dépendance.
+    // Tags autorisés sans attributs, sauf <a> qui ne garde qu'un href http(s).
+    const SAFE_TAGS = new Set(['b', 'i', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h2', 'h3'])
     const sanitizeHtml = (html) => {
       if (!html || typeof html !== 'string') return ''
-      // ✅ CRITICAL: Sanitize with DOMPurify on server-side
-      // Only allow safe tags: b, i, em, strong, p, br, a, ul, li
-      return DOMPurify.sanitize(html, {
-        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h2', 'h3'],
-        ALLOWED_ATTR: ['href', 'target', 'rel'],
-        KEEP_CONTENT: true,
-      })
+      return html
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (tag, name) => {
+          const lower = name.toLowerCase()
+          if (!SAFE_TAGS.has(lower)) return ''
+          if (tag.startsWith('</')) return `</${lower}>`
+          if (lower === 'a') {
+            const href = tag.match(/href\s*=\s*["']([^"']*)["']/i)?.[1] || ''
+            return /^https?:\/\//i.test(href)
+              ? `<a href="${href.replace(/"/g, '&quot;')}" rel="noopener noreferrer">`
+              : ''
+          }
+          return `<${lower}>`
+        })
     }
 
     // ✅ Helper function: Validate artwork data
@@ -294,7 +304,7 @@ export default async function handler(req, res) {
     }
 
     // ✅ Rate Limiting Check
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+    const clientIp = req.headers['x-forwarded-for']?.split(',').pop()?.trim() ||
                      req.socket?.remoteAddress ||
                      'unknown'
 
@@ -2226,6 +2236,15 @@ export default async function handler(req, res) {
           return res.status(404).json({ error: 'Profile not found' })
         }
 
+        // Données personnelles (e-mail, téléphone, statut de compte) : réservées au titulaire et à l'admin
+        const viewerAuth = await checkAuth(req)
+        const isOwnProfile = !viewerAuth.error && viewerAuth.userId === s1
+        const isAdminViewer = !viewerAuth.error && viewerAuth.role === 'admin'
+        if (!isOwnProfile && !isAdminViewer) {
+          const { email, telephone, auth_provider, is_active, last_login, ...publicProfile } = profileData
+          return res.status(200).json({ success: true, data: publicProfile })
+        }
+
         return res.status(200).json({ success: true, data: profileData })
       } catch (err) {
         return res.status(404).json({ error: 'Profile not found' })
@@ -2287,6 +2306,10 @@ export default async function handler(req, res) {
         const body = { ...req.body }
         delete body.role  // Users cannot change their own role
         delete body.is_active  // Users cannot deactivate themselves
+        // Champs d'identité et de statut gérés par le serveur uniquement
+        delete body.id
+        delete body.auth_provider
+        delete body.onboarding_completed
 
         const { data, error } = await supabaseAdmin
           .from('users')
@@ -2519,9 +2542,18 @@ export default async function handler(req, res) {
       // POST /api/payments/webhook — Handle payment notifications (PayDunya, Stripe)
       if (req.method === 'POST' && s1 === 'webhook') {
         try {
-          const { transaction_id, status, amount, user_id, type, currency } = req.body
+          // Journal de paiement : authentification obligatoire, et le client ne fixe jamais
+          // le statut ni l'acheteur. Seul un paiement confirmé côté prestataire peut devenir 'confirmed'.
+          const payAuth = await checkAuth(req)
+          if (payAuth.error) {
+            return res.status(payAuth.status || 401).json({ error: payAuth.error })
+          }
 
-          if (!transaction_id || !status || !amount) {
+          const { transaction_id, amount, type, currency } = req.body
+          const status = 'pending'
+          const user_id = payAuth.userId
+
+          if (!transaction_id || !amount) {
             return res.status(400).json({
               error: 'Missing required fields: transaction_id, status, amount',
             })
