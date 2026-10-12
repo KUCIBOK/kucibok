@@ -11,6 +11,10 @@ import { handleProfessionalAnalytics } from './_modules/professional-analytics-f
 import DOMPurify from 'dompurify'
 import PDFDocument from 'pdfkit'
 
+// Champs d'une œuvre que le client ne doit jamais pouvoir écrire directement :
+// modération, certification et identifiants.
+const PROTECTED_ARTWORK_FIELDS = ['id', 'status', 'kucibok_id', 'certificate_path', 'created_at', 'updated_at']
+
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -578,6 +582,10 @@ export default async function handler(req, res) {
         // ✅ CRITICAL: Ensure user_id and artist_id are properly linked
         const body = { ...req.body, user_id: user.id, artist_id: artistId }
 
+        // Champs réservés au serveur : un artiste ne peut ni s'approuver, ni fixer l'identifiant de certification
+        for (const field of PROTECTED_ARTWORK_FIELDS) delete body[field]
+        body.status = 'pending'
+
         // ✅ CRITICAL: Sanitize HTML fields to prevent XSS
         if (body.description) {
           body.description = sanitizeHtml(body.description)
@@ -652,6 +660,8 @@ export default async function handler(req, res) {
         const body = { ...req.body }
         delete body.user_id
         delete body.artist_id
+        // Champs réservés au serveur (modération, certification, identifiants)
+        for (const field of PROTECTED_ARTWORK_FIELDS) delete body[field]
 
         // ✅ CRITICAL: Sanitize HTML fields to prevent XSS
         if (body.description) {
@@ -702,6 +712,12 @@ export default async function handler(req, res) {
 
         if (existing.user_id !== user.id) {
           return res.status(403).json({ error: 'You can only change status of your own artworks' })
+        }
+
+        // Le propriétaire ne peut pas s'approuver ni se rejeter : seule la modération admin pose approved/rejected
+        const OWNER_STATUSES = ['draft', 'archived']
+        if (!OWNER_STATUSES.includes(req.body.status)) {
+          return res.status(403).json({ error: 'Invalid status change' })
         }
 
         const { data, error } = await supabaseAdmin
@@ -1400,6 +1416,10 @@ export default async function handler(req, res) {
         try {
           const { email, password, role, name, country, institution } = req.body
 
+          // Liste blanche : le client ne peut jamais choisir admin/curator/advisor à l'inscription
+          const SIGNUP_ROLES = ['buyer', 'artist']
+          const signupRole = SIGNUP_ROLES.includes(role) ? role : 'buyer'
+
           if (!email || !password) {
             return res.status(400).json({ error: 'Email and password are required' })
           }
@@ -1419,7 +1439,7 @@ export default async function handler(req, res) {
             password,
             email_confirm: false, // User must verify email
             user_metadata: {
-              role: role || 'buyer',
+              role: signupRole,
               name: name || email.split('@')[0],
               country: country || null,
               institution: institution || null,
@@ -1440,7 +1460,7 @@ export default async function handler(req, res) {
           // Available columns: id, name, username, role, country, telephone, auth_provider, profile_completed, onboarding_completed, is_active, last_login, created_at
           const { error: profileError } = await supabaseAdmin.from('users').insert({
             id: data.user.id,
-            role: role || 'buyer',
+            role: signupRole,
             name: name || email.split('@')[0],
             country: country || null,
             auth_provider: 'email',
@@ -1501,7 +1521,7 @@ export default async function handler(req, res) {
               user: {
                 id: data.user.id,
                 email: data.user.email,
-                role: role || 'buyer',
+                role: signupRole,
               },
               message: 'Check your email to verify your account',
             },
@@ -1739,10 +1759,19 @@ export default async function handler(req, res) {
     if (s0 === 'subscriptions') {
       // POST /api/subscriptions/create-trial — Create 14-day trial
       if (req.method === 'POST' && s1 === 'create-trial') {
+        // Authentification obligatoire, et l'essai ne peut être créé que pour soi-même
+        const trialAuth = await checkAuth(req)
+        if (trialAuth.error) {
+          return res.status(trialAuth.status || 401).json({ error: trialAuth.error })
+        }
+
         const { user_id } = req.body
 
         if (!user_id) {
           return res.status(400).json({ error: 'user_id is required' })
+        }
+        if (user_id !== trialAuth.userId) {
+          return res.status(403).json({ error: 'You can only start your own trial' })
         }
 
         try {
@@ -2950,9 +2979,10 @@ export default async function handler(req, res) {
     // CLIENTS ROUTES (CRM for artists & advisors)
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'clients') {
+      // checkAuth renvoie toujours un objet : il faut tester `error`, pas la valeur elle-même
       const auth = await checkAuth(req)
-      if (!auth) {
-        return res.status(401).json({ error: 'Unauthorized' })
+      if (auth.error) {
+        return res.status(auth.status || 401).json({ error: 'Unauthorized' })
       }
 
       // GET /api/clients/ — Get all clients (admin only)
@@ -2980,7 +3010,7 @@ export default async function handler(req, res) {
           const { data: userClients, error } = await supabaseAdmin
             .from('clients')
             .select('*')
-            .eq('user_id', auth.sub)
+            .eq('user_id', auth.userId)
             .order('created_at', { ascending: false })
 
           if (error) {
@@ -3003,7 +3033,7 @@ export default async function handler(req, res) {
             .from('clients')
             .insert([
               {
-                user_id: auth.sub,
+                user_id: auth.userId,
                 name: `${nom || ''} ${prenom || ''}`.trim() || email,
                 email,
                 telephone: telephone || null,
@@ -3041,7 +3071,7 @@ export default async function handler(req, res) {
               notes: notes || null,
             })
             .eq('id', clientId)
-            .eq('user_id', auth.sub) // Ensure user can only update their own clients
+            .eq('user_id', auth.userId) // Ensure user can only update their own clients
             .select()
             .single()
 
@@ -3072,7 +3102,7 @@ export default async function handler(req, res) {
             .eq('id', clientId)
             .single()
 
-          if (fetchError || !client || client.user_id !== auth.sub) {
+          if (fetchError || !client || client.user_id !== auth.userId) {
             return res.status(403).json({ error: 'Unauthorized' })
           }
 
