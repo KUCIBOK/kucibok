@@ -56,40 +56,55 @@ CREATE TRIGGER trg_protect_artwork_status
   BEFORE UPDATE ON artworks
   FOR EACH ROW EXECUTE FUNCTION protect_artwork_status();
 
--- ─── 3. RLS sur les tables des conseillers ──────────────────────────────────
--- Chaque conseiller ne voit que ses propres lignes ; l'admin voit tout.
-ALTER TABLE advisor_holdings ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "advisor_holdings: propre ou admin" ON advisor_holdings;
-CREATE POLICY "advisor_holdings: propre ou admin" ON advisor_holdings
-  FOR ALL
-  USING (advisor_id = auth.uid() OR is_admin())
-  WITH CHECK (advisor_id = auth.uid() OR is_admin());
+-- ─── 3. RLS sur les tables des conseillers (conditionnel) ───────────────────
+-- Les tables de la migration 027 ne sont PAS créées en production : chaque bloc
+-- ne s'applique que si la table existe, pour que la migration passe partout.
+-- (Conséquence à noter : sans ces tables, les écrans conseiller qui les lisent
+-- échouent et retombent sur des données de démonstration.)
+DO $$
+BEGIN
+  IF to_regclass('public.advisor_holdings') IS NOT NULL THEN
+    ALTER TABLE advisor_holdings ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "advisor_holdings: propre ou admin" ON advisor_holdings;
+    CREATE POLICY "advisor_holdings: propre ou admin" ON advisor_holdings
+      FOR ALL
+      USING (advisor_id = auth.uid() OR is_admin())
+      WITH CHECK (advisor_id = auth.uid() OR is_admin());
+  END IF;
 
-ALTER TABLE advisor_portfolio_snapshots ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "advisor_snapshots: propre ou admin" ON advisor_portfolio_snapshots;
-CREATE POLICY "advisor_snapshots: propre ou admin" ON advisor_portfolio_snapshots
-  FOR ALL
-  USING (advisor_id = auth.uid() OR is_admin())
-  WITH CHECK (advisor_id = auth.uid() OR is_admin());
+  IF to_regclass('public.advisor_portfolio_snapshots') IS NOT NULL THEN
+    ALTER TABLE advisor_portfolio_snapshots ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "advisor_snapshots: propre ou admin" ON advisor_portfolio_snapshots;
+    CREATE POLICY "advisor_snapshots: propre ou admin" ON advisor_portfolio_snapshots
+      FOR ALL
+      USING (advisor_id = auth.uid() OR is_admin())
+      WITH CHECK (advisor_id = auth.uid() OR is_admin());
+  END IF;
 
-ALTER TABLE portfolio_events ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "portfolio_events: propre ou admin" ON portfolio_events;
-CREATE POLICY "portfolio_events: propre ou admin" ON portfolio_events
-  FOR ALL
-  USING (advisor_id = auth.uid() OR is_admin())
-  WITH CHECK (advisor_id = auth.uid() OR is_admin());
+  IF to_regclass('public.portfolio_events') IS NOT NULL THEN
+    ALTER TABLE portfolio_events ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "portfolio_events: propre ou admin" ON portfolio_events;
+    CREATE POLICY "portfolio_events: propre ou admin" ON portfolio_events
+      FOR ALL
+      USING (advisor_id = auth.uid() OR is_admin())
+      WITH CHECK (advisor_id = auth.uid() OR is_admin());
+  END IF;
 
--- Historique de valorisation : admin uniquement pour l'instant.
--- Si l'écran conseiller le lit directement, ajouter une politique SELECT pour les conseillers.
-ALTER TABLE artist_valuation_history ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "valuation_history: admin" ON artist_valuation_history;
-CREATE POLICY "valuation_history: admin" ON artist_valuation_history
-  FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
+  -- Historique de valorisation : admin uniquement pour l'instant.
+  IF to_regclass('public.artist_valuation_history') IS NOT NULL THEN
+    ALTER TABLE artist_valuation_history ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "valuation_history: admin" ON artist_valuation_history;
+    CREATE POLICY "valuation_history: admin" ON artist_valuation_history
+      FOR ALL
+      USING (is_admin())
+      WITH CHECK (is_admin());
+  END IF;
 
--- Cache analytique : accès serveur uniquement (aucune politique = aucun accès client).
-ALTER TABLE analytics_cache ENABLE ROW LEVEL SECURITY;
+  -- Cache analytique : accès serveur uniquement (aucune politique = aucun accès client).
+  IF to_regclass('public.analytics_cache') IS NOT NULL THEN
+    ALTER TABLE analytics_cache ENABLE ROW LEVEL SECURITY;
+  END IF;
+END $$;
 
 -- ─── Vérification après application ─────────────────────────────────────────
 -- select tablename, rowsecurity from pg_tables where schemaname = 'public'
