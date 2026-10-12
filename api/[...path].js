@@ -2186,6 +2186,12 @@ export default async function handler(req, res) {
     // DEBUG ENDPOINT: Test profile fix for Missira
     if (s0 === 'debug' && s1 === 'missira-profile') {
       try {
+        // Diagnostic réservé aux admins
+        const debugAuth = await checkAuth(req)
+        if (debugAuth.error || debugAuth.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
         // Find Missira's user_id
         const { data: missiraUser } = await supabaseAdmin
           .from('users')
@@ -3110,6 +3116,12 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'audit-thugmoc' && req.method === 'GET') {
       try {
+        // Diagnostic réservé aux admins (expose des données utilisateurs)
+        const auditAuth = await checkAuth(req)
+        if (auditAuth.error || auditAuth.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+
         const { email = 'thugmoc@gmail.com' } = req.query
 
         console.log(`[Audit] Deep diagnostic for: ${email}`)
