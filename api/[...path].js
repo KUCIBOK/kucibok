@@ -1318,9 +1318,9 @@ export default async function handler(req, res) {
             success: true,
             data: {
               user: existingUser,
+              // Sélection de rôle uniquement tant que l'onboarding Google n'est pas terminé
               needs_role_selection:
-                existingUser.auth_provider === 'google' &&
-                (!existingUser.onboarding_completed || existingUser.role === 'buyer'),
+                existingUser.auth_provider === 'google' && !existingUser.onboarding_completed,
             },
           })
         } catch (err) {
@@ -1352,7 +1352,8 @@ export default async function handler(req, res) {
           if (currentUserError || !currentUser) {
             return res.status(404).json({ error: 'User profile not found' })
           }
-          if (currentUser.role !== 'buyer' || currentUser.auth_provider !== 'google') {
+          // Un seul choix possible, et seulement pendant l'onboarding Google (sinon escalade vers curator/advisor)
+          if (currentUser.role !== 'buyer' || currentUser.auth_provider !== 'google' || currentUser.onboarding_completed) {
             return res.status(403).json({ error: 'Role selection is only available after Google signup' })
           }
 
@@ -1620,9 +1621,12 @@ export default async function handler(req, res) {
             .eq('id', user.id)
             .single()
 
-          return res.status(200).json({
-            data: profile || { id: user.id, email: user.email, role: 'buyer' },
-          })
+          // Pas de profil : ne jamais inventer un rôle 'buyer' (un admin basculerait en collectionneur)
+          if (!profile) {
+            return res.status(404).json({ error: 'User profile not found' })
+          }
+
+          return res.status(200).json({ data: profile })
         } catch (err) {
           console.error('[Auth Me Error]', err)
           return res.status(500).json({ error: err.message })
