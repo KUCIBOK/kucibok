@@ -376,7 +376,8 @@ export default async function handler(req, res) {
         // Seuls l'admin/curator ou le propriétaire authentifié voient tous les statuts.
         // Tout autre appelant (anonyme ou non propriétaire) reçoit uniquement les œuvres approuvées.
         const caller = await checkAuth(req)
-        const isPrivileged = !caller.error && ['admin', 'curator'].includes(caller.role)
+        // Seul l'admin voit tous les statuts ; le curateur reste limité aux œuvres approuvées (règle CLAUDE.md)
+        const isPrivileged = !caller.error && caller.role === 'admin'
         let isOwner = !caller.error && !!user_id && user_id === caller.userId
         if (!caller.error && !isOwner && artist_id) {
           const { data: ownArtist } = await supabaseAdmin
@@ -459,6 +460,8 @@ export default async function handler(req, res) {
         return res.status(200).json({
           success: true,
           artworks: artworksWithArtistNames,
+          // Alias attendu par les écrans qui lisent `data` (ex. catalogue Pro, ancien standalone)
+          data: artworksWithArtistNames,
           count: artworksWithArtistNames.length,
           _debug: filterDiagnosis, // ✅ DEBUG INFO — remove in production
         })
