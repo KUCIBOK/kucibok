@@ -515,7 +515,9 @@ export default async function handler(req, res) {
       }
 
       // GET /api/artworks/:id — Get single artwork
-      if (req.method === 'GET' && s1 && s1 !== 'verify') {
+      // Les routes du tableau collecteur ont leur propre bloc plus bas : ne pas les intercepter ici
+      const COLLECTOR_ROUTES = ['collection', 'collection-summary', 'purchase-history', 'purchase-stats', 'priority-access']
+      if (req.method === 'GET' && s1 && s1 !== 'verify' && !COLLECTOR_ROUTES.includes(s1)) {
         const { data, error } = await supabaseAdmin
           .from('artworks')
           .select('*')
@@ -2911,9 +2913,28 @@ export default async function handler(req, res) {
         if (!product?.is_active || (product.stock !== -1 && product.stock <= 0)) return res.status(400).json({ error: 'Produit indisponible' })
         const { data: credits } = await supabaseAdmin.from('artist_credits').select('balance').eq('artist_id', rewardsUser.id).maybeSingle()
         if (!credits || credits.balance < product.credits_cost) return res.status(400).json({ error: 'Crédits insuffisants' })
+        // Verrous optimistes : chaque mise à jour ne s'applique que si la valeur lue n'a pas changé
+        // (évite la double dépense et le dépassement de stock sur requêtes parallèles).
+        let stockDecremented = false
+        if (product.stock !== -1) {
+          const { data: stocked } = await supabaseAdmin.from('artist_products').update({ stock: product.stock - 1 }).eq('id', product_id).eq('stock', product.stock).select('id')
+          if (!stocked?.length) return res.status(409).json({ error: 'Stock modifié, réessayez' })
+          stockDecremented = true
+        }
+
+        const { data: debited } = await supabaseAdmin.from('artist_credits').update({ balance: credits.balance - product.credits_cost }).eq('artist_id', rewardsUser.id).eq('balance', credits.balance).select('balance')
+        if (!debited?.length) {
+          if (stockDecremented) await supabaseAdmin.from('artist_products').update({ stock: product.stock }).eq('id', product_id)
+          return res.status(409).json({ error: 'Solde modifié, réessayez' })
+        }
+
         const { data: order, error } = await supabaseAdmin.from('artist_orders').insert({ artist_id: rewardsUser.id, product_id, credits_spent: product.credits_cost }).select().single()
-        if (error) return res.status(500).json({ error: 'Impossible de créer la commande' })
-        await supabaseAdmin.from('artist_credits').update({ balance: credits.balance - product.credits_cost }).eq('artist_id', rewardsUser.id)
+        if (error) {
+          // Annulation : on rend les crédits et le stock
+          await supabaseAdmin.from('artist_credits').update({ balance: credits.balance }).eq('artist_id', rewardsUser.id)
+          if (stockDecremented) await supabaseAdmin.from('artist_products').update({ stock: product.stock }).eq('id', product_id)
+          return res.status(500).json({ error: 'Impossible de créer la commande' })
+        }
         return res.status(201).json({ data: order })
       }
     }
@@ -3319,6 +3340,22 @@ export default async function handler(req, res) {
         console.error('[Audit Error]', error)
         return res.status(500).json({ error: error.message })
       }
+    }
+
+    // Cron Vercel (vercel.json) : clôture les abonnements échus. Protégé par CRON_SECRET.
+    if (s0 === 'cron' && s1 === 'expire-subscriptions' && req.method === 'GET') {
+      const cronSecret = process.env.CRON_SECRET
+      if (!cronSecret || req.headers.authorization !== `Bearer ${cronSecret}`) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { data: expired, error: expireError } = await supabaseAdmin
+        .from('subscriptions')
+        .update({ status: 'closed' })
+        .eq('status', 'active')
+        .lt('end_date', new Date().toISOString())
+        .select('id')
+      if (expireError) return res.status(500).json({ error: expireError.message })
+      return res.status(200).json({ closed: expired?.length || 0 })
     }
 
     if (s0 === 'health') {
