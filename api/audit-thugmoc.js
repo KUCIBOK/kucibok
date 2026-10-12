@@ -6,6 +6,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { checkAuth } from './_lib/response.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -26,6 +27,12 @@ export default async function handler(req, res) {
 
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  // Diagnostic réservé aux admins : il expose des données utilisateurs
+  const auth = await checkAuth(req)
+  if (auth.error || auth.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' })
   }
 
   try {
