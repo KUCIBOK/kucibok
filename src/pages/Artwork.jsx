@@ -66,11 +66,11 @@ export default function Artwork() {
     window.scrollTo(0, 0)
     const fetchArtwork = async () => {
       const data = await getArtworkById(id)
-      if (data?._id) {
+      if (data?.id || data?._id) {
         setArtwork((prev) => ({ ...data, loading: false }))
         if (data?.artist_id) {
           const artistData = await getArtistById(data.artist_id)
-          if (artistData?._id) {
+          if (artistData?.id || artistData?._id) {
             setArtwork((prev) => ({ ...prev, artist: artistData }))
           }
         }
