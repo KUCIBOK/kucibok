@@ -1829,7 +1829,8 @@ export default async function handler(req, res) {
     // ─── Abonnement payant via PayDunya (curateur et conseiller) ─────────────
     // Création de la facture, puis notification serveur. Le statut n'est accepté
     // que s'il est confirmé par PayDunya (appel serveur à serveur), jamais depuis le corps reçu.
-    const PAYDUNYA_BASE = process.env.PAYDUNYA_MODE === 'live'
+    // Insensible à la casse : « live », « Live » ou « LIVE » activent la production PayDunya
+    const PAYDUNYA_BASE = String(process.env.PAYDUNYA_MODE || '').trim().toLowerCase() === 'live'
       ? 'https://app.paydunya.com/api/v1'
       : 'https://app.paydunya.com/sandbox-api/v1'
     const paydunyaHeaders = () => ({
