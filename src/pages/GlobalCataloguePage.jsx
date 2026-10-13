@@ -36,7 +36,7 @@ const SORT_FNS = {
 function ArtworkCard({ artwork }) {
   return (
     <Link
-      to={`/artwork/${artwork._id}`}
+      to={`/artwork/${artwork.id ?? artwork._id}`}
       className="group block relative overflow-hidden bg-kcb-noir border border-white/[0.05] hover:border-[var(--accent)]/40 transition-all duration-300 hover:-translate-y-0.5 no-underline"
     >
       {/* Image */}
@@ -398,7 +398,7 @@ function CatalogueContent() {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-0.5">
               {shown.map((artwork) => (
-                <ArtworkCard key={artwork._id} artwork={artwork} />
+                <ArtworkCard key={artwork.id ?? artwork._id} artwork={artwork} />
               ))}
             </div>
 

@@ -20,7 +20,6 @@ import { useToast } from '../store/ToastContext'
 import { useAuth } from '../store/AuthContext' // ⏳ Kept for now (fallback)
 import { useAuthUser } from '../api/useAuthUser' // ✨ New: React Query
 import { useArtworks } from '../api/useArtworksQuery' /* ✨ React Query - for recommendations */
-import { getArtistById } from '../api/useArtists'
 import { Skeleton, SkeletonCard } from '../components/ui'
 import { Helmet } from 'react-helmet'
 import { RequestShipmentModal } from '../components/artworks/RequestShipmentModal'
@@ -66,14 +65,9 @@ export default function Artwork() {
     window.scrollTo(0, 0)
     const fetchArtwork = async () => {
       const data = await getArtworkById(id)
-      if (data?._id) {
+      if (data?.id || data?._id) {
+        // Le nom de l'artiste vient déjà de l'API (champ artist) : plus d'appel /api/artist/<id>
         setArtwork((prev) => ({ ...data, loading: false }))
-        if (data?.artist_id) {
-          const artistData = await getArtistById(data.artist_id)
-          if (artistData?._id) {
-            setArtwork((prev) => ({ ...prev, artist: artistData }))
-          }
-        }
         return
       }
       makeToast('Erreur', 'warning', data?.error)
@@ -109,17 +103,17 @@ export default function Artwork() {
   }, [artwork, forSale, id])
 
   const fetchCertUrl = useCallback(async () => {
-    if (certUrl || certLoading || !artwork?._id) return
+    if (certUrl || certLoading || !(artwork?.id ?? artwork?._id)) return
     setCertLoading(true)
     try {
-      const res = await fetch(`${utils.api}/certificates/url/${artwork._id}`, utils.options)
+      const res = await fetch(`${utils.api}/certificates/url/${(artwork.id ?? artwork._id)}`, utils.options)
       const body = await res.json()
       if (body?.data?.certificate_url) setCertUrl(body.data.certificate_url)
     } catch {
       // cert URL is optional
     }
     setCertLoading(false)
-  }, [artwork?._id, certUrl, certLoading])
+  }, [(artwork?.id ?? artwork?._id), certUrl, certLoading])
 
   const launchDescriptionSpeech = () => {
     try {
@@ -143,7 +137,7 @@ export default function Artwork() {
         <meta property="og:title" content={artwork.title || 'Kucibok'} />
         <meta property="og:description" content={artwork.description || ''} />
         <meta property="og:image" content={artwork.image || ''} />
-        <meta property="og:url" content={`https://kucibok.com/artwork/${artwork._id || ''}`} />
+        <meta property="og:url" content={`https://kucibok.com/artwork/${(artwork.id ?? artwork._id) || ''}`} />
         <meta property="og:type" content="product" />
         {artwork?.kucibok_id && (
           <meta property="product:retailer_item_id" content={artwork.kucibok_id} />
@@ -177,7 +171,7 @@ export default function Artwork() {
             </div>
           </div>
         )}
-        {artwork?._id && !artwork.loading && (
+        {(artwork?.id ?? artwork?._id) && !artwork.loading && (
           <>
             <RevealOnScroll>
               <section className="w-full">
@@ -280,7 +274,7 @@ export default function Artwork() {
                             }).format(artwork?.price || 0)}
                           </span>
                           <Link
-                            to={`/artwork-checkout/${artwork?._id}`}
+                            to={`/artwork-checkout/${(artwork?.id ?? artwork?._id)}`}
                             className="rounded-[4px] bg-kcb-or text-sm hover:bg-kcb-bronze transition text-kcb-noir font-semibold px-5 py-2.5 flex items-center gap-2 shadow focus:outline-none focus:ring-2 focus:ring-kcb-or uppercase tracking-[0.05em]"
                           >
                             <ShoppingCart className="w-4 h-4" /> Acheter maintenant

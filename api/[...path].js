@@ -521,7 +521,7 @@ export default async function handler(req, res) {
       if (req.method === 'GET' && s1 && s1 !== 'verify' && !COLLECTOR_ROUTES.includes(s1)) {
         const { data, error } = await supabaseAdmin
           .from('artworks')
-          .select('*')
+          .select('*, artists(id, name)')
           .eq('id', s1)
           .single()
 
@@ -529,9 +529,17 @@ export default async function handler(req, res) {
           return res.status(404).json({ error: 'Artwork not found' })
         }
 
+        // Une œuvre non publiée n'est visible que par son propriétaire et l'admin
+        const viewer = await checkAuth(req)
+        const isStaff = !viewer.error && viewer.role === 'admin'
+        const isOwner = !viewer.error && data.user_id === viewer.userId
+        if (!['approved', 'sold'].includes(data.status) && !isStaff && !isOwner) {
+          return res.status(404).json({ error: 'Artwork not found' })
+        }
+
         return res.status(200).json({
           success: true,
-          data,
+          data: { ...data, artist: data.artists?.name || data.artist || 'Unknown artist' },
         })
       }
 
