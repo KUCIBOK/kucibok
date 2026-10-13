@@ -10,6 +10,7 @@ import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
 import DOMPurify from 'dompurify'
 import PDFDocument from 'pdfkit'
+import { createHash } from 'node:crypto'
 
 // Champs d'une œuvre que le client ne doit jamais pouvoir écrire directement :
 // modération, certification et identifiants.
@@ -2004,6 +2005,10 @@ export default async function handler(req, res) {
             // Contrôle de configuration : mode utilisé et longueur des clés (jamais les valeurs)
             mode: process.env.PAYDUNYA_MODE ?? null,
             master_key_length: (process.env.PAYDUNYA_MASTER_KEY || '').length,
+            // Empreintes courtes : deux clés identiques ont la même empreinte (la valeur n'est jamais affichée)
+            master_key_fingerprint: createHash('sha256').update(process.env.PAYDUNYA_MASTER_KEY || '').digest('hex').slice(0, 8),
+            private_key_fingerprint: createHash('sha256').update(process.env.PAYDUNYA_PRIVATE_KEY || '').digest('hex').slice(0, 8),
+            token_fingerprint: createHash('sha256').update(process.env.PAYDUNYA_TOKEN || '').digest('hex').slice(0, 8),
             private_key_length: (process.env.PAYDUNYA_PRIVATE_KEY || '').length,
             token_length: (process.env.PAYDUNYA_TOKEN || '').length,
           },
