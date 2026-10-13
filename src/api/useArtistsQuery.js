@@ -9,7 +9,9 @@ import { utils } from './useAPI'
 async function fetchArtists() {
   const res = await fetch(`${utils.api}/artists`, utils.options)
   if (!res.ok) throw new Error('Failed to fetch artists')
-  return res.json()
+  // L'API renvoie { success, artists, count } : la page attend un tableau
+  const body = await res.json()
+  return body?.artists ?? body?.data ?? (Array.isArray(body) ? body : [])
 }
 
 /**
