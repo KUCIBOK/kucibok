@@ -1839,9 +1839,11 @@ export default async function handler(req, res) {
       'PAYDUNYA-TOKEN': process.env.PAYDUNYA_TOKEN || '',
     })
     const SITE_URL = process.env.CORS_ORIGIN || 'https://kucibok.com'
-    const SUBSCRIPTION_DAYS = 30
+    const SUBSCRIPTION_PRICE_XOF = { curator: 17711, advisor: 43949 }
+    // Facturation mensuelle calendaire : même jour le mois suivant
     const activateSubscription = (userId) => {
-      const end = new Date(Date.now() + SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000)
+      const end = new Date()
+      end.setMonth(end.getMonth() + 1)
       return supabaseAdmin.from('subscriptions').insert({
         user_id: userId,
         plan_id: null,
@@ -1858,8 +1860,8 @@ export default async function handler(req, res) {
       if (!TRIAL_ROLES.includes(payAuth.role)) {
         return res.status(403).json({ error: 'Abonnement réservé aux curateurs et conseillers' })
       }
-      const amount = Number(process.env.SUBSCRIPTION_PRICE_XOF)
-      if (!amount) return res.status(500).json({ error: "Tarif d'abonnement non configuré" })
+      // Tarifs : Curateur 27 €/mois, Conseiller 67 €/mois, convertis en XOF (655,957 XOF = 1 €)
+      const amount = SUBSCRIPTION_PRICE_XOF[payAuth.role]
 
       const invoiceRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/create`, {
         method: 'POST',
@@ -1868,7 +1870,7 @@ export default async function handler(req, res) {
           invoice: {
             items: { item_0: { name: 'Abonnement Kucibok', quantity: 1, unit_price: String(amount), total_price: String(amount), description: '' } },
             total_amount: amount,
-            description: 'Abonnement Kucibok (30 jours)',
+            description: 'Abonnement Kucibok (mensuel)',
           },
           store: { name: 'Kucibok' },
           custom_data: { user_id: payAuth.userId, purpose: 'subscription' },
