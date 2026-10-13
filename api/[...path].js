@@ -223,6 +223,47 @@ export default async function handler(req, res) {
     const s1 = path[1] // Second segment
     const s2 = path[2] // Third segment
 
+    // ─── Essai et lecture seule (curateur et conseiller uniquement) ──────────
+    // Essai de 14 jours créé automatiquement. Après l'essai, sans abonnement actif,
+    // le compte reste en lecture seule : les écritures sont refusées.
+    const TRIAL_ROLES = ['curator', 'advisor']
+    const TRIAL_DAYS = 14
+    const startTrialIfNeeded = async (userId, role) => {
+      if (!TRIAL_ROLES.includes(role)) return
+      const { data: existing } = await supabaseAdmin.from('subscriptions').select('id').eq('user_id', userId).limit(1)
+      if (existing?.length) return
+      const trialEnd = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+      await supabaseAdmin.from('subscriptions').insert({
+        user_id: userId,
+        plan_id: null,
+        status: 'trial',
+        is_trial: true,
+        trial_started_at: new Date(),
+        trial_end_date: trialEnd,
+        start_date: new Date(),
+        end_date: trialEnd,
+      })
+    }
+    const hasActiveAccess = async (userId, role) => {
+      if (!TRIAL_ROLES.includes(role)) return true
+      const { data: subs } = await supabaseAdmin.from('subscriptions').select('status, end_date').eq('user_id', userId)
+      const now = Date.now()
+      return (subs || []).some(
+        (s) => ['active', 'trial'].includes(s.status) && (!s.end_date || Date.parse(s.end_date) > now)
+      )
+    }
+    // Écritures interdites en lecture seule, sauf authentification, abonnement, paiement et profil
+    const WRITE_EXEMPT = ['auth', 'subscriptions', 'subscription', 'payments', 'errors', 'log', 'visitor', 'profile', 'notifications']
+    if (req.method !== 'GET' && !WRITE_EXEMPT.includes(s0)) {
+      const guardAuth = await checkAuth(req)
+      if (!guardAuth.error && TRIAL_ROLES.includes(guardAuth.role) && !(await hasActiveAccess(guardAuth.userId, guardAuth.role))) {
+        return res.status(402).json({
+          error: 'Votre essai est terminé. Votre espace est en lecture seule : abonnez-vous pour continuer.',
+          code: 'SUBSCRIPTION_REQUIRED',
+        })
+      }
+    }
+
     // ✅ DEBUG: Log all requests
     if (req.method !== 'GET' || s0 === 'artist' || s0 === 'profile') {
       console.log('[API Request]', {
@@ -1408,6 +1449,9 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: updateError.message })
           }
 
+          // Essai de 14 jours pour curateur et conseiller choisi à l'onboarding
+          await startTrialIfNeeded(auth.userId, role)
+
           if (role === 'artist') {
             const { data: existingArtist } = await supabaseAdmin
               .from('artists')
@@ -1438,7 +1482,7 @@ export default async function handler(req, res) {
           const { email, password, role, name, country, institution } = req.body
 
           // Liste blanche : le client ne peut jamais choisir admin/curator/advisor à l'inscription
-          const SIGNUP_ROLES = ['buyer', 'artist']
+          const SIGNUP_ROLES = ['buyer', 'artist', 'curator', 'advisor']
           const signupRole = SIGNUP_ROLES.includes(role) ? role : 'buyer'
 
           if (!email || !password) {
@@ -1493,6 +1537,9 @@ export default async function handler(req, res) {
             // Note: Auth user created but profile failed - may need cleanup
             return res.status(500).json({ error: 'Failed to create user profile' })
           }
+
+          // Essai de 14 jours pour curateur et conseiller
+          await startTrialIfNeeded(data.user.id, signupRole)
 
           // ✅ Send confirmation email via Resend
           // Generate a verification link using Supabase's built-in flow
@@ -1670,7 +1717,9 @@ export default async function handler(req, res) {
             return res.status(404).json({ error: 'User profile not found' })
           }
 
-          return res.status(200).json({ data: profile })
+          // Indique au front si l'espace est en lecture seule (essai terminé, sans abonnement)
+          const accessActive = await hasActiveAccess(user.id, profile.role)
+          return res.status(200).json({ data: { ...profile, access_active: accessActive } })
         } catch (err) {
           console.error('[Auth Me Error]', err)
           return res.status(500).json({ error: err.message })
@@ -1776,6 +1825,266 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     // SUBSCRIPTIONS ROUTES
     // ─────────────────────────────────────────────────────────────
+
+    // ─── Abonnement payant via PayDunya (curateur et conseiller) ─────────────
+    // Création de la facture, puis notification serveur. Le statut n'est accepté
+    // que s'il est confirmé par PayDunya (appel serveur à serveur), jamais depuis le corps reçu.
+    // Insensible à la casse : « live », « Live » ou « LIVE » activent la production PayDunya
+    const PAYDUNYA_BASE = String(process.env.PAYDUNYA_MODE || '').trim().toLowerCase() === 'live'
+      ? 'https://app.paydunya.com/api/v1'
+      : 'https://app.paydunya.com/sandbox-api/v1'
+    const paydunyaHeaders = () => ({
+      'Content-Type': 'application/json',
+      'PAYDUNYA-MASTER-KEY': process.env.PAYDUNYA_MASTER_KEY || '',
+      'PAYDUNYA-PRIVATE-KEY': process.env.PAYDUNYA_PRIVATE_KEY || '',
+      'PAYDUNYA-TOKEN': process.env.PAYDUNYA_TOKEN || '',
+    })
+    const SITE_URL = process.env.CORS_ORIGIN || 'https://kucibok.com'
+    const SUBSCRIPTION_PRICE_XOF = { curator: 17711, advisor: 43949 }
+    // Facturation mensuelle calendaire : même jour le mois suivant
+    const activateSubscription = (userId) => {
+      const end = new Date()
+      end.setMonth(end.getMonth() + 1)
+      return supabaseAdmin.from('subscriptions').insert({
+        user_id: userId,
+        plan_id: null,
+        status: 'active',
+        is_trial: false,
+        start_date: new Date(),
+        end_date: end,
+      })
+    }
+
+    if (req.method === 'POST' && s0 === 'subscriptions' && s1 === 'checkout') {
+      const payAuth = await checkAuth(req)
+      if (payAuth.error) return res.status(401).json({ error: payAuth.error })
+      if (!TRIAL_ROLES.includes(payAuth.role)) {
+        return res.status(403).json({ error: 'Abonnement réservé aux curateurs et conseillers' })
+      }
+      // Tarifs : Curateur 27 €/mois, Conseiller 67 €/mois, convertis en XOF (655,957 XOF = 1 €)
+      const amount = SUBSCRIPTION_PRICE_XOF[payAuth.role]
+
+      const invoiceRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/create`, {
+        method: 'POST',
+        headers: paydunyaHeaders(),
+        body: JSON.stringify({
+          invoice: {
+            items: { item_0: { name: 'Abonnement Kucibok', quantity: 1, unit_price: String(amount), total_price: String(amount), description: '' } },
+            total_amount: amount,
+            description: 'Abonnement Kucibok (mensuel)',
+          },
+          store: { name: 'Kucibok' },
+          custom_data: { user_id: payAuth.userId, purpose: 'subscription' },
+          actions: {
+            callback_url: `${SITE_URL}/api/payments/ipn`,
+            return_url: `${SITE_URL}/subscription-success`,
+            cancel_url: `${SITE_URL}/subscription-failed`,
+          },
+        }),
+      })
+      const invoice = await invoiceRes.json().catch(() => ({}))
+      if (invoice.response_code !== '00' || !invoice.token) {
+        return res.status(502).json({ error: 'Paiement indisponible, réessayez plus tard' })
+      }
+
+      await supabaseAdmin.from('transactions').insert({
+        payment_ref: invoice.token,
+        buyer_id: payAuth.userId,
+        amount,
+        currency: 'XOF',
+        payment_method: 'paydunya',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      })
+
+      return res.status(200).json({ checkout_url: invoice.response_text })
+    }
+
+    // Règlement d'une transaction confirmée : verrou (pending -> processing) pour éviter un double traitement
+    const settleTransaction = async (tx) => {
+      const { data: claimed } = await supabaseAdmin
+        .from('transactions')
+        .update({ status: 'processing' })
+        .eq('id', tx.id)
+        .eq('status', 'pending')
+        .select('id')
+      if (!claimed?.length) return 'already processed'
+
+      if (tx.artwork_id) {
+        // Vente unique : l'œuvre ne se vend qu'une fois
+        const { data: sold } = await supabaseAdmin
+          .from('artworks')
+          .update({ sold: true, sold_at: new Date().toISOString(), sold_price: tx.amount, sold_currency: 'XOF', for_sale: false })
+          .eq('id', tx.artwork_id)
+          .eq('sold', false)
+          .select('id')
+        if (!sold?.length) {
+          await supabaseAdmin.from('transactions').update({ status: 'completed_unavailable' }).eq('id', tx.id)
+          return 'artwork already sold'
+        }
+      } else {
+        await activateSubscription(tx.buyer_id)
+      }
+
+      await supabaseAdmin.from('transactions').update({ status: 'completed' }).eq('id', tx.id)
+      return 'OK'
+    }
+
+    // Achat d'une œuvre (contrat du front : POST /payments/paydunya-init { type, artwork_id, guest? })
+    if (req.method === 'POST' && s0 === 'payments' && s1 === 'paydunya-init') {
+      const { type, artwork_id, guest } = req.body || {}
+      if (type !== 'artwork' || !artwork_id) return res.status(400).json({ error: 'Requête invalide' })
+
+      const buyerAuth = await checkAuth(req)
+      const buyerId = buyerAuth.error ? null : buyerAuth.userId
+      if (!buyerId && (!guest?.name || !guest?.email)) {
+        return res.status(400).json({ error: 'Nom et e-mail requis pour un achat sans compte' })
+      }
+
+      const { data: artwork } = await supabaseAdmin
+        .from('artworks')
+        .select('id, title, price, currency, status, for_sale, sold')
+        .eq('id', artwork_id)
+        .maybeSingle()
+      if (!artwork || artwork.status !== 'approved' || !artwork.for_sale || artwork.sold) {
+        return res.status(404).json({ error: 'Œuvre indisponible' })
+      }
+
+      const price = Number(artwork.price)
+      if (!(price > 0)) return res.status(400).json({ error: "Prix de l'œuvre invalide" })
+      // Montant en XOF : les prix en euros sont convertis au taux du projet
+      const amount = String(artwork.currency).toUpperCase() === 'EUR' ? Math.round(price * 655.957) : Math.round(price)
+
+      // Transaction créée d'abord : sa référence (id) sert de lien vers la page de retour.
+      // Le token PayDunya est ajouté une fois la facture créée.
+      const txRef = crypto.randomUUID()
+      await supabaseAdmin.from('transactions').insert({
+        id: txRef,
+        payment_ref: `pending-${txRef}`,
+        buyer_id: buyerId,
+        artwork_id: artwork.id,
+        amount,
+        currency: 'XOF',
+        payment_method: 'paydunya',
+        status: 'pending',
+        buyer_name: buyerId ? null : guest.name,
+        buyer_email: buyerId ? null : guest.email,
+        buyer_phone: buyerId ? null : (guest.phone || null),
+        created_at: new Date().toISOString(),
+      })
+
+      const invoiceRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/create`, {
+        method: 'POST',
+        headers: paydunyaHeaders(),
+        body: JSON.stringify({
+          invoice: {
+            items: { item_0: { name: artwork.title || 'Œuvre Kucibok', quantity: 1, unit_price: String(amount), total_price: String(amount), description: '' } },
+            total_amount: amount,
+            description: `Achat œuvre ${artwork.id}`,
+          },
+          store: { name: 'Kucibok' },
+          custom_data: { purpose: 'artwork', artwork_id: artwork.id, transaction_ref: txRef },
+          actions: {
+            callback_url: `${SITE_URL}/api/payments/ipn`,
+            return_url: `${SITE_URL}/artwork-success/${txRef}`,
+            cancel_url: `${SITE_URL}/artwork-failed/${txRef}`,
+          },
+        }),
+      })
+      const invoice = await invoiceRes.json().catch(() => ({}))
+      if (invoice.response_code !== '00' || !invoice.token) {
+        await supabaseAdmin.from('transactions').update({ status: 'failed' }).eq('id', txRef)
+        // Diagnostic : réponse PayDunya (code et message uniquement, jamais les clés)
+        console.error('[PayDunya invoice]', invoice.response_code, invoice.response_text)
+        return res.status(502).json({
+          error: 'Paiement indisponible, réessayez plus tard',
+          paydunya: {
+            response_code: invoice.response_code ?? null,
+            response_text: invoice.response_text ?? null,
+            // Contrôle de configuration : mode utilisé et longueur des clés (jamais les valeurs)
+            mode: process.env.PAYDUNYA_MODE ?? null,
+            master_key_length: (process.env.PAYDUNYA_MASTER_KEY || '').length,
+            private_key_length: (process.env.PAYDUNYA_PRIVATE_KEY || '').length,
+            token_length: (process.env.PAYDUNYA_TOKEN || '').length,
+          },
+        })
+      }
+      await supabaseAdmin.from('transactions').update({ payment_ref: invoice.token }).eq('id', txRef)
+
+      return res.status(200).json({
+        success: true,
+        data: { payment_url: invoice.response_text, token: invoice.token, ref: invoice.token },
+      })
+    }
+
+    // Notification PayDunya (IPN) : activation seulement si PayDunya confirme le paiement
+    if (req.method === 'POST' && s0 === 'payments' && s1 === 'ipn') {
+      const body = req.body || {}
+      const token = body['data[invoice][token]'] ?? body.data?.invoice?.token
+      if (!token) return res.status(400).send('missing token')
+
+      const confirmRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/confirm/${encodeURIComponent(token)}`, {
+        headers: paydunyaHeaders(),
+      })
+      const confirmed = await confirmRes.json().catch(() => ({}))
+      if (String(confirmed.status).toLowerCase() !== 'completed') return res.status(200).send('not completed')
+
+      const { data: tx } = await supabaseAdmin
+        .from('transactions')
+        .select("id, buyer_id, status, artwork_id, amount")
+        .eq("payment_ref", token)
+        .maybeSingle()
+      if (!tx) return res.status(404).send('unknown transaction')
+      return res.status(200).send(await settleTransaction(tx))
+    }
+
+    // Page de retour : le front envoie la référence de la transaction (URL /artwork-success/<ref>)
+    if (req.method === 'POST' && s0 === 'payments' && s1 === 'paydunya-callback') {
+      const ref = String(req.body?.token || '')
+      if (!ref) return res.status(400).json({ error: 'Référence manquante' })
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref)
+
+      const { data: tx } = await supabaseAdmin
+        .from('transactions')
+        .select("id, buyer_id, status, artwork_id, amount, payment_ref")
+        .eq(isUuid ? "id" : "payment_ref", ref)
+        .maybeSingle()
+      if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
+
+      // Paiement pas encore confirmé : on le demande à PayDunya, comme pour la notification
+      if (tx.status === 'pending' && !String(tx.payment_ref).startsWith('pending-')) {
+        const confirmRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/confirm/${encodeURIComponent(tx.payment_ref)}`, {
+          headers: paydunyaHeaders(),
+        })
+        const confirmed = await confirmRes.json().catch(() => ({}))
+        if (String(confirmed.status).toLowerCase() === 'completed') await settleTransaction(tx)
+      }
+
+      const { data: fresh } = await supabaseAdmin
+        .from('transactions')
+        .select('status, amount, currency, artwork_id')
+        .eq('id', tx.id)
+        .single()
+      const { data: artwork } = fresh.artwork_id
+        ? await supabaseAdmin.from('artworks').select('id, title, image').eq('id', fresh.artwork_id).maybeSingle()
+        : { data: null }
+      return res.status(200).json({
+        success: true,
+        data: { status: fresh.status, amount: fresh.amount, currency: fresh.currency, artwork },
+      })
+    }
+
+    // Activation manuelle par un admin (secours si la notification n'arrive pas)
+    if (req.method === 'POST' && s0 === 'admin' && s1 === 'subscriptions' && s2 === 'activate') {
+      const adminAuth = await checkAuth(req)
+      if (adminAuth.error || adminAuth.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required' })
+      }
+      const { user_id } = req.body || {}
+      if (!user_id) return res.status(400).json({ error: 'user_id is required' })
+      await activateSubscription(user_id)
+      return res.status(200).json({ activated: true })
+    }
 
     if (s0 === 'subscriptions') {
       // POST /api/subscriptions/create-trial — Create 14-day trial
