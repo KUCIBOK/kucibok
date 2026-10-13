@@ -20,7 +20,6 @@ import { useToast } from '../store/ToastContext'
 import { useAuth } from '../store/AuthContext' // ⏳ Kept for now (fallback)
 import { useAuthUser } from '../api/useAuthUser' // ✨ New: React Query
 import { useArtworks } from '../api/useArtworksQuery' /* ✨ React Query - for recommendations */
-import { getArtistById } from '../api/useArtists'
 import { Skeleton, SkeletonCard } from '../components/ui'
 import { Helmet } from 'react-helmet'
 import { RequestShipmentModal } from '../components/artworks/RequestShipmentModal'
@@ -67,13 +66,8 @@ export default function Artwork() {
     const fetchArtwork = async () => {
       const data = await getArtworkById(id)
       if (data?.id || data?._id) {
+        // Le nom de l'artiste vient déjà de l'API (champ artist) : plus d'appel /api/artist/<id>
         setArtwork((prev) => ({ ...data, loading: false }))
-        if (data?.artist_id) {
-          const artistData = await getArtistById(data.artist_id)
-          if (artistData?.id || artistData?._id) {
-            setArtwork((prev) => ({ ...prev, artist: artistData }))
-          }
-        }
         return
       }
       makeToast('Erreur', 'warning', data?.error)
