@@ -14,6 +14,7 @@
     "format:check": "prettier --check src/",
     "test": "vitest run",
     "test:watch": "vitest",
+    "e2e": "playwright test",
     "test:api": "newman run postman/kucibok.postman_collection.json -e postman/kucibok.postman_environment.json --reporters cli,htmlextra --reporter-htmlextra-export reports/api-test-report.html",
     "test:api:ci": "newman run postman/kucibok.postman_collection.json -e postman/kucibok.postman_environment.json --reporters cli",
     "prepare": "node -e \"if(process.env.CI){process.exit(0)}\" || husky"
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.17.0",
+    "@playwright/test": "1.55.0",
     "@sentry/cli": "^2.4.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
