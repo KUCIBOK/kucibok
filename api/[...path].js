@@ -223,6 +223,47 @@ export default async function handler(req, res) {
     const s1 = path[1] // Second segment
     const s2 = path[2] // Third segment
 
+    // ─── Essai et lecture seule (curateur et conseiller uniquement) ──────────
+    // Essai de 14 jours créé automatiquement. Après l'essai, sans abonnement actif,
+    // le compte reste en lecture seule : les écritures sont refusées.
+    const TRIAL_ROLES = ['curator', 'advisor']
+    const TRIAL_DAYS = 14
+    const startTrialIfNeeded = async (userId, role) => {
+      if (!TRIAL_ROLES.includes(role)) return
+      const { data: existing } = await supabaseAdmin.from('subscriptions').select('id').eq('user_id', userId).limit(1)
+      if (existing?.length) return
+      const trialEnd = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+      await supabaseAdmin.from('subscriptions').insert({
+        user_id: userId,
+        plan_id: null,
+        status: 'trial',
+        is_trial: true,
+        trial_started_at: new Date(),
+        trial_end_date: trialEnd,
+        start_date: new Date(),
+        end_date: trialEnd,
+      })
+    }
+    const hasActiveAccess = async (userId, role) => {
+      if (!TRIAL_ROLES.includes(role)) return true
+      const { data: subs } = await supabaseAdmin.from('subscriptions').select('status, end_date').eq('user_id', userId)
+      const now = Date.now()
+      return (subs || []).some(
+        (s) => ['active', 'trial'].includes(s.status) && (!s.end_date || Date.parse(s.end_date) > now)
+      )
+    }
+    // Écritures interdites en lecture seule, sauf authentification, abonnement, paiement et profil
+    const WRITE_EXEMPT = ['auth', 'subscriptions', 'subscription', 'payments', 'errors', 'log', 'visitor', 'profile', 'notifications']
+    if (req.method !== 'GET' && !WRITE_EXEMPT.includes(s0)) {
+      const guardAuth = await checkAuth(req)
+      if (!guardAuth.error && TRIAL_ROLES.includes(guardAuth.role) && !(await hasActiveAccess(guardAuth.userId, guardAuth.role))) {
+        return res.status(402).json({
+          error: 'Votre essai est terminé. Votre espace est en lecture seule : abonnez-vous pour continuer.',
+          code: 'SUBSCRIPTION_REQUIRED',
+        })
+      }
+    }
+
     // ✅ DEBUG: Log all requests
     if (req.method !== 'GET' || s0 === 'artist' || s0 === 'profile') {
       console.log('[API Request]', {
@@ -1408,6 +1449,9 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: updateError.message })
           }
 
+          // Essai de 14 jours pour curateur et conseiller choisi à l'onboarding
+          await startTrialIfNeeded(auth.userId, role)
+
           if (role === 'artist') {
             const { data: existingArtist } = await supabaseAdmin
               .from('artists')
@@ -1438,7 +1482,7 @@ export default async function handler(req, res) {
           const { email, password, role, name, country, institution } = req.body
 
           // Liste blanche : le client ne peut jamais choisir admin/curator/advisor à l'inscription
-          const SIGNUP_ROLES = ['buyer', 'artist']
+          const SIGNUP_ROLES = ['buyer', 'artist', 'curator', 'advisor']
           const signupRole = SIGNUP_ROLES.includes(role) ? role : 'buyer'
 
           if (!email || !password) {
@@ -1493,6 +1537,9 @@ export default async function handler(req, res) {
             // Note: Auth user created but profile failed - may need cleanup
             return res.status(500).json({ error: 'Failed to create user profile' })
           }
+
+          // Essai de 14 jours pour curateur et conseiller
+          await startTrialIfNeeded(data.user.id, signupRole)
 
           // ✅ Send confirmation email via Resend
           // Generate a verification link using Supabase's built-in flow
@@ -1670,7 +1717,9 @@ export default async function handler(req, res) {
             return res.status(404).json({ error: 'User profile not found' })
           }
 
-          return res.status(200).json({ data: profile })
+          // Indique au front si l'espace est en lecture seule (essai terminé, sans abonnement)
+          const accessActive = await hasActiveAccess(user.id, profile.role)
+          return res.status(200).json({ data: { ...profile, access_active: accessActive } })
         } catch (err) {
           console.error('[Auth Me Error]', err)
           return res.status(500).json({ error: err.message })
