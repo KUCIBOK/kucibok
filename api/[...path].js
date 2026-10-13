@@ -2549,6 +2549,122 @@ export default async function handler(req, res) {
     // PAYMENT WEBHOOK ROUTES
     // ─────────────────────────────────────────────────────────────
 
+    // ─── Achat d'une œuvre via PayDunya ──────────────────────────────────────
+    // Le statut n'est accepté que s'il est confirmé par PayDunya (appel serveur à serveur).
+    const PAYDUNYA_BASE = process.env.PAYDUNYA_MODE === 'live'
+      ? 'https://app.paydunya.com/api/v1'
+      : 'https://app.paydunya.com/sandbox-api/v1'
+    const paydunyaHeaders = () => ({
+      'Content-Type': 'application/json',
+      'PAYDUNYA-MASTER-KEY': process.env.PAYDUNYA_MASTER_KEY || '',
+      'PAYDUNYA-PRIVATE-KEY': process.env.PAYDUNYA_PRIVATE_KEY || '',
+      'PAYDUNYA-TOKEN': process.env.PAYDUNYA_TOKEN || '',
+    })
+    const SITE_URL = process.env.CORS_ORIGIN || 'https://kucibok.com'
+
+    // Contrat du front : POST /payments/paydunya-init { type: 'artwork', artwork_id, guest? }
+    if (req.method === 'POST' && s0 === 'payments' && s1 === 'paydunya-init') {
+      const { type, artwork_id, guest } = req.body || {}
+      if (type !== 'artwork' || !artwork_id) return res.status(400).json({ error: 'Requête invalide' })
+
+      const buyerAuth = await checkAuth(req)
+      const buyerId = buyerAuth.error ? null : buyerAuth.userId
+      if (!buyerId && (!guest?.name || !guest?.email)) {
+        return res.status(400).json({ error: 'Nom et e-mail requis pour un achat sans compte' })
+      }
+
+      const { data: artwork } = await supabaseAdmin
+        .from('artworks')
+        .select('id, title, price, currency, status, for_sale, sold')
+        .eq('id', artwork_id)
+        .maybeSingle()
+      if (!artwork || artwork.status !== 'approved' || !artwork.for_sale || artwork.sold) {
+        return res.status(404).json({ error: 'Œuvre indisponible' })
+      }
+
+      const price = Number(artwork.price)
+      if (!(price > 0)) return res.status(400).json({ error: "Prix de l'œuvre invalide" })
+      // Montant en XOF : les prix en euros sont convertis au taux du projet (655,957 XOF = 1 €)
+      const amount = String(artwork.currency).toUpperCase() === 'EUR' ? Math.round(price * 655.957) : Math.round(price)
+
+      const invoiceRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/create`, {
+        method: 'POST',
+        headers: paydunyaHeaders(),
+        body: JSON.stringify({
+          invoice: {
+            items: { item_0: { name: artwork.title || 'Œuvre Kucibok', quantity: 1, unit_price: String(amount), total_price: String(amount), description: '' } },
+            total_amount: Number(amount),
+            description: `Achat œuvre ${artwork.id}`,
+          },
+          store: { name: 'Kucibok' },
+          custom_data: { purpose: 'artwork', artwork_id: artwork.id },
+          actions: {
+            callback_url: `${SITE_URL}/api/payments/ipn`,
+            return_url: `${SITE_URL}/artwork-success/${artwork.id}`,
+            cancel_url: `${SITE_URL}/artwork-failed/${artwork.id}`,
+          },
+        }),
+      })
+      const invoice = await invoiceRes.json().catch(() => ({}))
+      if (invoice.response_code !== '00' || !invoice.token) {
+        return res.status(502).json({ error: 'Paiement indisponible, réessayez plus tard' })
+      }
+
+      await supabaseAdmin.from('transactions').insert({
+        transaction_id: invoice.token,
+        user_id: buyerId,
+        artwork_id: artwork.id,
+        amount: Number(amount),
+        currency: 'XOF',
+        type: 'artwork',
+        status: 'pending',
+        metadata: { guest: buyerId ? null : { name: guest.name, email: guest.email, phone: guest.phone || null } },
+        created_at: new Date().toISOString(),
+      })
+
+      return res.status(200).json({
+        success: true,
+        data: { payment_url: invoice.response_text, token: invoice.token, ref: invoice.token },
+      })
+    }
+
+    // Notification PayDunya (IPN) : marque l'œuvre vendue une seule fois, après confirmation PayDunya
+    if (req.method === 'POST' && s0 === 'payments' && s1 === 'ipn') {
+      const body = req.body || {}
+      const token = body['data[invoice][token]'] ?? body.data?.invoice?.token
+      if (!token) return res.status(400).send('missing token')
+
+      const confirmRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/confirm/${encodeURIComponent(token)}`, {
+        headers: paydunyaHeaders(),
+      })
+      const confirmed = await confirmRes.json().catch(() => ({}))
+      if (String(confirmed.status).toLowerCase() !== 'completed') return res.status(200).send('not completed')
+
+      const { data: tx } = await supabaseAdmin
+        .from('transactions')
+        .select('status, artwork_id, amount')
+        .eq('transaction_id', token)
+        .maybeSingle()
+      if (!tx) return res.status(404).send('unknown transaction')
+      if (tx.status === 'completed' || tx.status === 'completed_unavailable') return res.status(200).send('already processed')
+
+      // Vente unique : mise à jour conditionnelle sur sold = false
+      const { data: sold } = await supabaseAdmin
+        .from('artworks')
+        .update({ sold: true, sold_at: new Date().toISOString(), sold_price: tx.amount, sold_currency: 'XOF', for_sale: false })
+        .eq('id', tx.artwork_id)
+        .eq('sold', false)
+        .select('id')
+      if (!sold?.length) {
+        // Œuvre déjà vendue : le paiement doit être traité manuellement (remboursement)
+        await supabaseAdmin.from('transactions').update({ status: 'completed_unavailable' }).eq('transaction_id', token)
+        return res.status(200).send('artwork already sold')
+      }
+
+      await supabaseAdmin.from('transactions').update({ status: 'completed' }).eq('transaction_id', token)
+      return res.status(200).send('OK')
+    }
+
     if (s0 === 'payments') {
       // POST /api/payments/webhook — Handle payment notifications (PayDunya, Stripe)
       if (req.method === 'POST' && s1 === 'webhook') {
