@@ -381,7 +381,8 @@ export default async function handler(req, res) {
         // ✅ CRITICAL FIX: Build query with filters first, THEN select with relations
         // Reason: Supabase JS loads .select() result in memory first, making filters ineffective
         // We must chain: from() → filters → select() → order() → limit()
-        let query = supabaseAdmin.from('artworks')
+        // .eq() n'existe qu'après .select() dans supabase-js : on sélectionne d'abord, puis on filtre
+        let query = supabaseAdmin.from('artworks').select('*, artists(id, name)')
 
         // ✅ FIX: Only apply default status='approved' filter if no artist_id or user_id is specified
         // - If fetching for PUBLIC (no artist_id/user_id): Only show 'approved' artworks
@@ -412,7 +413,7 @@ export default async function handler(req, res) {
         if (category) query = query.eq('category', category)
 
         // NOW select with relations, order, and limit AFTER all filters
-        query = query.select('*, artists(id, name)').order('created_at', { ascending: false }).limit(parseInt(limit))
+        query = query.order('created_at', { ascending: false }).limit(parseInt(limit))
 
         const { data: filteredArtworks, error } = await query
 
