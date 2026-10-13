@@ -11,6 +11,10 @@ import { handleProfessionalAnalytics } from './_modules/professional-analytics-f
 import DOMPurify from 'dompurify'
 import PDFDocument from 'pdfkit'
 
+// Champs d'une œuvre que le client ne doit jamais pouvoir écrire directement :
+// modération, certification et identifiants.
+const PROTECTED_ARTWORK_FIELDS = ['id', 'status', 'kucibok_id', 'certificate_path', 'created_at', 'updated_at']
+
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -249,15 +253,25 @@ export default async function handler(req, res) {
     }
 
     // ✅ Helper function: Sanitize HTML to prevent XSS
+    // DOMPurify n'a pas de DOM en Node (sanitize indéfini) : filtre à liste blanche sans dépendance.
+    // Tags autorisés sans attributs, sauf <a> qui ne garde qu'un href http(s).
+    const SAFE_TAGS = new Set(['b', 'i', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h2', 'h3'])
     const sanitizeHtml = (html) => {
       if (!html || typeof html !== 'string') return ''
-      // ✅ CRITICAL: Sanitize with DOMPurify on server-side
-      // Only allow safe tags: b, i, em, strong, p, br, a, ul, li
-      return DOMPurify.sanitize(html, {
-        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h2', 'h3'],
-        ALLOWED_ATTR: ['href', 'target', 'rel'],
-        KEEP_CONTENT: true,
-      })
+      return html
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (tag, name) => {
+          const lower = name.toLowerCase()
+          if (!SAFE_TAGS.has(lower)) return ''
+          if (tag.startsWith('</')) return `</${lower}>`
+          if (lower === 'a') {
+            const href = tag.match(/href\s*=\s*["']([^"']*)["']/i)?.[1] || ''
+            return /^https?:\/\//i.test(href)
+              ? `<a href="${href.replace(/"/g, '&quot;')}" rel="noopener noreferrer">`
+              : ''
+          }
+          return `<${lower}>`
+        })
     }
 
     // ✅ Helper function: Validate artwork data
@@ -290,7 +304,7 @@ export default async function handler(req, res) {
     }
 
     // ✅ Rate Limiting Check
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+    const clientIp = req.headers['x-forwarded-for']?.split(',').pop()?.trim() ||
                      req.socket?.remoteAddress ||
                      'unknown'
 
@@ -367,14 +381,29 @@ export default async function handler(req, res) {
         // ✅ CRITICAL FIX: Build query with filters first, THEN select with relations
         // Reason: Supabase JS loads .select() result in memory first, making filters ineffective
         // We must chain: from() → filters → select() → order() → limit()
-        let query = supabaseAdmin.from('artworks')
+        // .eq() n'existe qu'après .select() dans supabase-js : on sélectionne d'abord, puis on filtre
+        let query = supabaseAdmin.from('artworks').select('*, artists(id, name)')
 
         // ✅ FIX: Only apply default status='approved' filter if no artist_id or user_id is specified
         // - If fetching for PUBLIC (no artist_id/user_id): Only show 'approved' artworks
         // - If fetching for the OWNER (artist_id or user_id): Return ALL artworks (they own them)
         // - If fetching for ADMIN: Can see pending, rejected, etc
-        const hasOwnerFilter = artist_id || user_id
-        const statusToApply = status || (hasOwnerFilter ? null : 'approved')
+        // Seuls l'admin/curator ou le propriétaire authentifié voient tous les statuts.
+        // Tout autre appelant (anonyme ou non propriétaire) reçoit uniquement les œuvres approuvées.
+        const caller = await checkAuth(req)
+        // Seul l'admin voit tous les statuts ; le curateur reste limité aux œuvres approuvées (règle CLAUDE.md)
+        const isPrivileged = !caller.error && caller.role === 'admin'
+        let isOwner = !caller.error && !!user_id && user_id === caller.userId
+        if (!caller.error && !isOwner && artist_id) {
+          const { data: ownArtist } = await supabaseAdmin
+            .from('artists')
+            .select('id')
+            .eq('id', artist_id)
+            .eq('user_id', caller.userId)
+            .maybeSingle()
+          isOwner = !!ownArtist
+        }
+        const statusToApply = (isPrivileged || isOwner) ? (status || null) : 'approved'
 
         // Apply all filters FIRST (before select with relations)
         if (statusToApply) query = query.eq('status', statusToApply)
@@ -384,7 +413,7 @@ export default async function handler(req, res) {
         if (category) query = query.eq('category', category)
 
         // NOW select with relations, order, and limit AFTER all filters
-        query = query.select('*, artists(id, name)').order('created_at', { ascending: false }).limit(parseInt(limit))
+        query = query.order('created_at', { ascending: false }).limit(parseInt(limit))
 
         const { data: filteredArtworks, error } = await query
 
@@ -446,6 +475,8 @@ export default async function handler(req, res) {
         return res.status(200).json({
           success: true,
           artworks: artworksWithArtistNames,
+          // Alias attendu par les écrans qui lisent `data` (ex. catalogue Pro, ancien standalone)
+          data: artworksWithArtistNames,
           count: artworksWithArtistNames.length,
           _debug: filterDiagnosis, // ✅ DEBUG INFO — remove in production
         })
@@ -485,7 +516,9 @@ export default async function handler(req, res) {
       }
 
       // GET /api/artworks/:id — Get single artwork
-      if (req.method === 'GET' && s1 && s1 !== 'verify') {
+      // Les routes du tableau collecteur ont leur propre bloc plus bas : ne pas les intercepter ici
+      const COLLECTOR_ROUTES = ['collection', 'collection-summary', 'purchase-history', 'purchase-stats', 'priority-access']
+      if (req.method === 'GET' && s1 && s1 !== 'verify' && !COLLECTOR_ROUTES.includes(s1)) {
         const { data, error } = await supabaseAdmin
           .from('artworks')
           .select('*')
@@ -562,6 +595,10 @@ export default async function handler(req, res) {
         // ✅ CRITICAL: Ensure user_id and artist_id are properly linked
         const body = { ...req.body, user_id: user.id, artist_id: artistId }
 
+        // Champs réservés au serveur : un artiste ne peut ni s'approuver, ni fixer l'identifiant de certification
+        for (const field of PROTECTED_ARTWORK_FIELDS) delete body[field]
+        body.status = 'pending'
+
         // ✅ CRITICAL: Sanitize HTML fields to prevent XSS
         if (body.description) {
           body.description = sanitizeHtml(body.description)
@@ -636,6 +673,8 @@ export default async function handler(req, res) {
         const body = { ...req.body }
         delete body.user_id
         delete body.artist_id
+        // Champs réservés au serveur (modération, certification, identifiants)
+        for (const field of PROTECTED_ARTWORK_FIELDS) delete body[field]
 
         // ✅ CRITICAL: Sanitize HTML fields to prevent XSS
         if (body.description) {
@@ -686,6 +725,12 @@ export default async function handler(req, res) {
 
         if (existing.user_id !== user.id) {
           return res.status(403).json({ error: 'You can only change status of your own artworks' })
+        }
+
+        // Le propriétaire ne peut pas s'approuver ni se rejeter : seule la modération admin pose approved/rejected
+        const OWNER_STATUSES = ['draft', 'archived']
+        if (!OWNER_STATUSES.includes(req.body.status)) {
+          return res.status(403).json({ error: 'Invalid status change' })
         }
 
         const { data, error } = await supabaseAdmin
@@ -1305,9 +1350,9 @@ export default async function handler(req, res) {
             success: true,
             data: {
               user: existingUser,
+              // Sélection de rôle uniquement tant que l'onboarding Google n'est pas terminé
               needs_role_selection:
-                existingUser.auth_provider === 'google' &&
-                (!existingUser.onboarding_completed || existingUser.role === 'buyer'),
+                existingUser.auth_provider === 'google' && !existingUser.onboarding_completed,
             },
           })
         } catch (err) {
@@ -1339,7 +1384,8 @@ export default async function handler(req, res) {
           if (currentUserError || !currentUser) {
             return res.status(404).json({ error: 'User profile not found' })
           }
-          if (currentUser.role !== 'buyer' || currentUser.auth_provider !== 'google') {
+          // Un seul choix possible, et seulement pendant l'onboarding Google (sinon escalade vers curator/advisor)
+          if (currentUser.role !== 'buyer' || currentUser.auth_provider !== 'google' || currentUser.onboarding_completed) {
             return res.status(403).json({ error: 'Role selection is only available after Google signup' })
           }
 
@@ -1383,6 +1429,10 @@ export default async function handler(req, res) {
         try {
           const { email, password, role, name, country, institution } = req.body
 
+          // Liste blanche : le client ne peut jamais choisir admin/curator/advisor à l'inscription
+          const SIGNUP_ROLES = ['buyer', 'artist']
+          const signupRole = SIGNUP_ROLES.includes(role) ? role : 'buyer'
+
           if (!email || !password) {
             return res.status(400).json({ error: 'Email and password are required' })
           }
@@ -1402,7 +1452,7 @@ export default async function handler(req, res) {
             password,
             email_confirm: false, // User must verify email
             user_metadata: {
-              role: role || 'buyer',
+              role: signupRole,
               name: name || email.split('@')[0],
               country: country || null,
               institution: institution || null,
@@ -1423,7 +1473,7 @@ export default async function handler(req, res) {
           // Available columns: id, name, username, role, country, telephone, auth_provider, profile_completed, onboarding_completed, is_active, last_login, created_at
           const { error: profileError } = await supabaseAdmin.from('users').insert({
             id: data.user.id,
-            role: role || 'buyer',
+            role: signupRole,
             name: name || email.split('@')[0],
             country: country || null,
             auth_provider: 'email',
@@ -1484,7 +1534,7 @@ export default async function handler(req, res) {
               user: {
                 id: data.user.id,
                 email: data.user.email,
-                role: role || 'buyer',
+                role: signupRole,
               },
               message: 'Check your email to verify your account',
             },
@@ -1607,9 +1657,12 @@ export default async function handler(req, res) {
             .eq('id', user.id)
             .single()
 
-          return res.status(200).json({
-            data: profile || { id: user.id, email: user.email, role: 'buyer' },
-          })
+          // Pas de profil : ne jamais inventer un rôle 'buyer' (un admin basculerait en collectionneur)
+          if (!profile) {
+            return res.status(404).json({ error: 'User profile not found' })
+          }
+
+          return res.status(200).json({ data: profile })
         } catch (err) {
           console.error('[Auth Me Error]', err)
           return res.status(500).json({ error: err.message })
@@ -1719,10 +1772,19 @@ export default async function handler(req, res) {
     if (s0 === 'subscriptions') {
       // POST /api/subscriptions/create-trial — Create 14-day trial
       if (req.method === 'POST' && s1 === 'create-trial') {
+        // Authentification obligatoire, et l'essai ne peut être créé que pour soi-même
+        const trialAuth = await checkAuth(req)
+        if (trialAuth.error) {
+          return res.status(trialAuth.status || 401).json({ error: trialAuth.error })
+        }
+
         const { user_id } = req.body
 
         if (!user_id) {
           return res.status(400).json({ error: 'user_id is required' })
+        }
+        if (user_id !== trialAuth.userId) {
+          return res.status(403).json({ error: 'You can only start your own trial' })
         }
 
         try {
@@ -2177,6 +2239,15 @@ export default async function handler(req, res) {
           return res.status(404).json({ error: 'Profile not found' })
         }
 
+        // Données personnelles (e-mail, téléphone, statut de compte) : réservées au titulaire et à l'admin
+        const viewerAuth = await checkAuth(req)
+        const isOwnProfile = !viewerAuth.error && viewerAuth.userId === s1
+        const isAdminViewer = !viewerAuth.error && viewerAuth.role === 'admin'
+        if (!isOwnProfile && !isAdminViewer) {
+          const { email, telephone, auth_provider, is_active, last_login, ...publicProfile } = profileData
+          return res.status(200).json({ success: true, data: publicProfile })
+        }
+
         return res.status(200).json({ success: true, data: profileData })
       } catch (err) {
         return res.status(404).json({ error: 'Profile not found' })
@@ -2238,6 +2309,10 @@ export default async function handler(req, res) {
         const body = { ...req.body }
         delete body.role  // Users cannot change their own role
         delete body.is_active  // Users cannot deactivate themselves
+        // Champs d'identité et de statut gérés par le serveur uniquement
+        delete body.id
+        delete body.auth_provider
+        delete body.onboarding_completed
 
         const { data, error } = await supabaseAdmin
           .from('users')
@@ -2470,9 +2545,18 @@ export default async function handler(req, res) {
       // POST /api/payments/webhook — Handle payment notifications (PayDunya, Stripe)
       if (req.method === 'POST' && s1 === 'webhook') {
         try {
-          const { transaction_id, status, amount, user_id, type, currency } = req.body
+          // Journal de paiement : authentification obligatoire, et le client ne fixe jamais
+          // le statut ni l'acheteur. Seul un paiement confirmé côté prestataire peut devenir 'confirmed'.
+          const payAuth = await checkAuth(req)
+          if (payAuth.error) {
+            return res.status(payAuth.status || 401).json({ error: payAuth.error })
+          }
 
-          if (!transaction_id || !status || !amount) {
+          const { transaction_id, amount, type, currency } = req.body
+          const status = 'pending'
+          const user_id = payAuth.userId
+
+          if (!transaction_id || !amount) {
             return res.status(400).json({
               error: 'Missing required fields: transaction_id, status, amount',
             })
@@ -2830,9 +2914,28 @@ export default async function handler(req, res) {
         if (!product?.is_active || (product.stock !== -1 && product.stock <= 0)) return res.status(400).json({ error: 'Produit indisponible' })
         const { data: credits } = await supabaseAdmin.from('artist_credits').select('balance').eq('artist_id', rewardsUser.id).maybeSingle()
         if (!credits || credits.balance < product.credits_cost) return res.status(400).json({ error: 'Crédits insuffisants' })
+        // Verrous optimistes : chaque mise à jour ne s'applique que si la valeur lue n'a pas changé
+        // (évite la double dépense et le dépassement de stock sur requêtes parallèles).
+        let stockDecremented = false
+        if (product.stock !== -1) {
+          const { data: stocked } = await supabaseAdmin.from('artist_products').update({ stock: product.stock - 1 }).eq('id', product_id).eq('stock', product.stock).select('id')
+          if (!stocked?.length) return res.status(409).json({ error: 'Stock modifié, réessayez' })
+          stockDecremented = true
+        }
+
+        const { data: debited } = await supabaseAdmin.from('artist_credits').update({ balance: credits.balance - product.credits_cost }).eq('artist_id', rewardsUser.id).eq('balance', credits.balance).select('balance')
+        if (!debited?.length) {
+          if (stockDecremented) await supabaseAdmin.from('artist_products').update({ stock: product.stock }).eq('id', product_id)
+          return res.status(409).json({ error: 'Solde modifié, réessayez' })
+        }
+
         const { data: order, error } = await supabaseAdmin.from('artist_orders').insert({ artist_id: rewardsUser.id, product_id, credits_spent: product.credits_cost }).select().single()
-        if (error) return res.status(500).json({ error: 'Impossible de créer la commande' })
-        await supabaseAdmin.from('artist_credits').update({ balance: credits.balance - product.credits_cost }).eq('artist_id', rewardsUser.id)
+        if (error) {
+          // Annulation : on rend les crédits et le stock
+          await supabaseAdmin.from('artist_credits').update({ balance: credits.balance }).eq('artist_id', rewardsUser.id)
+          if (stockDecremented) await supabaseAdmin.from('artist_products').update({ stock: product.stock }).eq('id', product_id)
+          return res.status(500).json({ error: 'Impossible de créer la commande' })
+        }
         return res.status(201).json({ data: order })
       }
     }
@@ -2930,9 +3033,10 @@ export default async function handler(req, res) {
     // CLIENTS ROUTES (CRM for artists & advisors)
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'clients') {
+      // checkAuth renvoie toujours un objet : il faut tester `error`, pas la valeur elle-même
       const auth = await checkAuth(req)
-      if (!auth) {
-        return res.status(401).json({ error: 'Unauthorized' })
+      if (auth.error) {
+        return res.status(auth.status || 401).json({ error: 'Unauthorized' })
       }
 
       // GET /api/clients/ — Get all clients (admin only)
@@ -2960,7 +3064,7 @@ export default async function handler(req, res) {
           const { data: userClients, error } = await supabaseAdmin
             .from('clients')
             .select('*')
-            .eq('user_id', auth.sub)
+            .eq('user_id', auth.userId)
             .order('created_at', { ascending: false })
 
           if (error) {
@@ -2983,7 +3087,7 @@ export default async function handler(req, res) {
             .from('clients')
             .insert([
               {
-                user_id: auth.sub,
+                user_id: auth.userId,
                 name: `${nom || ''} ${prenom || ''}`.trim() || email,
                 email,
                 telephone: telephone || null,
@@ -3021,7 +3125,7 @@ export default async function handler(req, res) {
               notes: notes || null,
             })
             .eq('id', clientId)
-            .eq('user_id', auth.sub) // Ensure user can only update their own clients
+            .eq('user_id', auth.userId) // Ensure user can only update their own clients
             .select()
             .single()
 
@@ -3052,7 +3156,7 @@ export default async function handler(req, res) {
             .eq('id', clientId)
             .single()
 
-          if (fetchError || !client || client.user_id !== auth.sub) {
+          if (fetchError || !client || client.user_id !== auth.userId) {
             return res.status(403).json({ error: 'Unauthorized' })
           }
 
@@ -3237,6 +3341,22 @@ export default async function handler(req, res) {
         console.error('[Audit Error]', error)
         return res.status(500).json({ error: error.message })
       }
+    }
+
+    // Cron Vercel (vercel.json) : clôture les abonnements échus. Protégé par CRON_SECRET.
+    if (s0 === 'cron' && s1 === 'expire-subscriptions' && req.method === 'GET') {
+      const cronSecret = process.env.CRON_SECRET
+      if (!cronSecret || req.headers.authorization !== `Bearer ${cronSecret}`) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { data: expired, error: expireError } = await supabaseAdmin
+        .from('subscriptions')
+        .update({ status: 'closed' })
+        .eq('status', 'active')
+        .lt('end_date', new Date().toISOString())
+        .select('id')
+      if (expireError) return res.status(500).json({ error: expireError.message })
+      return res.status(200).json({ closed: expired?.length || 0 })
     }
 
     if (s0 === 'health') {

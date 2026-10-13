@@ -61,8 +61,8 @@ export default function OAuthCallback() {
         if (data.needs_role_selection) {
           navigate('/auth/role-selection', { replace: true })
         } else {
-          const role = data.user?.role ?? 'buyer'
-          const dashboard = ROLE_DASHBOARDS[role] ?? '/'
+          // Pas de rôle par défaut : un rôle absent renvoie à l'accueil plutôt qu'au compte acheteur
+          const dashboard = ROLE_DASHBOARDS[data.user?.role] ?? '/'
           navigate(dashboard, { replace: true })
         }
       } catch (err) {
