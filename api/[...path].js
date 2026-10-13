@@ -1997,7 +1997,15 @@ export default async function handler(req, res) {
         console.error('[PayDunya invoice]', invoice.response_code, invoice.response_text)
         return res.status(502).json({
           error: 'Paiement indisponible, réessayez plus tard',
-          paydunya: { response_code: invoice.response_code ?? null, response_text: invoice.response_text ?? null },
+          paydunya: {
+            response_code: invoice.response_code ?? null,
+            response_text: invoice.response_text ?? null,
+            // Contrôle de configuration : mode utilisé et longueur des clés (jamais les valeurs)
+            mode: process.env.PAYDUNYA_MODE ?? null,
+            master_key_length: (process.env.PAYDUNYA_MASTER_KEY || '').length,
+            private_key_length: (process.env.PAYDUNYA_PRIVATE_KEY || '').length,
+            token_length: (process.env.PAYDUNYA_TOKEN || '').length,
+          },
         })
       }
       await supabaseAdmin.from('transactions').update({ payment_ref: invoice.token }).eq('id', txRef)
