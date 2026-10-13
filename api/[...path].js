@@ -1887,17 +1887,46 @@ export default async function handler(req, res) {
       }
 
       await supabaseAdmin.from('transactions').insert({
-        transaction_id: invoice.token,
-        user_id: payAuth.userId,
+        payment_ref: invoice.token,
+        buyer_id: payAuth.userId,
         amount,
         currency: 'XOF',
-        type: 'subscription',
+        payment_method: 'paydunya',
         status: 'pending',
-        metadata: { role: payAuth.role },
         created_at: new Date().toISOString(),
       })
 
       return res.status(200).json({ checkout_url: invoice.response_text })
+    }
+
+    // Règlement d'une transaction confirmée : verrou (pending -> processing) pour éviter un double traitement
+    const settleTransaction = async (tx) => {
+      const { data: claimed } = await supabaseAdmin
+        .from('transactions')
+        .update({ status: 'processing' })
+        .eq('id', tx.id)
+        .eq('status', 'pending')
+        .select('id')
+      if (!claimed?.length) return 'already processed'
+
+      if (tx.artwork_id) {
+        // Vente unique : l'œuvre ne se vend qu'une fois
+        const { data: sold } = await supabaseAdmin
+          .from('artworks')
+          .update({ sold: true, sold_at: new Date().toISOString(), sold_price: tx.amount, sold_currency: 'XOF', for_sale: false })
+          .eq('id', tx.artwork_id)
+          .eq('sold', false)
+          .select('id')
+        if (!sold?.length) {
+          await supabaseAdmin.from('transactions').update({ status: 'completed_unavailable' }).eq('id', tx.id)
+          return 'artwork already sold'
+        }
+      } else {
+        await activateSubscription(tx.buyer_id)
+      }
+
+      await supabaseAdmin.from('transactions').update({ status: 'completed' }).eq('id', tx.id)
+      return 'OK'
     }
 
     // Achat d'une œuvre (contrat du front : POST /payments/paydunya-init { type, artwork_id, guest? })
@@ -1925,6 +1954,24 @@ export default async function handler(req, res) {
       // Montant en XOF : les prix en euros sont convertis au taux du projet
       const amount = String(artwork.currency).toUpperCase() === 'EUR' ? Math.round(price * 655.957) : Math.round(price)
 
+      // Transaction créée d'abord : sa référence (id) sert de lien vers la page de retour.
+      // Le token PayDunya est ajouté une fois la facture créée.
+      const txRef = crypto.randomUUID()
+      await supabaseAdmin.from('transactions').insert({
+        id: txRef,
+        payment_ref: `pending-${txRef}`,
+        buyer_id: buyerId,
+        artwork_id: artwork.id,
+        amount,
+        currency: 'XOF',
+        payment_method: 'paydunya',
+        status: 'pending',
+        buyer_name: buyerId ? null : guest.name,
+        buyer_email: buyerId ? null : guest.email,
+        buyer_phone: buyerId ? null : (guest.phone || null),
+        created_at: new Date().toISOString(),
+      })
+
       const invoiceRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/create`, {
         method: 'POST',
         headers: paydunyaHeaders(),
@@ -1935,30 +1982,20 @@ export default async function handler(req, res) {
             description: `Achat œuvre ${artwork.id}`,
           },
           store: { name: 'Kucibok' },
-          custom_data: { purpose: 'artwork', artwork_id: artwork.id },
+          custom_data: { purpose: 'artwork', artwork_id: artwork.id, transaction_ref: txRef },
           actions: {
             callback_url: `${SITE_URL}/api/payments/ipn`,
-            return_url: `${SITE_URL}/artwork-success/${artwork.id}`,
-            cancel_url: `${SITE_URL}/artwork-failed/${artwork.id}`,
+            return_url: `${SITE_URL}/artwork-success/${txRef}`,
+            cancel_url: `${SITE_URL}/artwork-failed/${txRef}`,
           },
         }),
       })
       const invoice = await invoiceRes.json().catch(() => ({}))
       if (invoice.response_code !== '00' || !invoice.token) {
+        await supabaseAdmin.from('transactions').update({ status: 'failed' }).eq('id', txRef)
         return res.status(502).json({ error: 'Paiement indisponible, réessayez plus tard' })
       }
-
-      await supabaseAdmin.from('transactions').insert({
-        transaction_id: invoice.token,
-        user_id: buyerId,
-        artwork_id: artwork.id,
-        amount,
-        currency: 'XOF',
-        type: 'artwork',
-        status: 'pending',
-        metadata: { guest: buyerId ? null : { name: guest.name, email: guest.email, phone: guest.phone || null } },
-        created_at: new Date().toISOString(),
-      })
+      await supabaseAdmin.from('transactions').update({ payment_ref: invoice.token }).eq('id', txRef)
 
       return res.status(200).json({
         success: true,
@@ -1980,30 +2017,47 @@ export default async function handler(req, res) {
 
       const { data: tx } = await supabaseAdmin
         .from('transactions')
-        .select('user_id, status, type, artwork_id, amount')
-        .eq('transaction_id', token)
+        .select("id, buyer_id, status, artwork_id, amount")
+        .eq("payment_ref", token)
         .maybeSingle()
       if (!tx) return res.status(404).send('unknown transaction')
-      if (tx.status === 'completed') return res.status(200).send('already processed')
+      return res.status(200).send(await settleTransaction(tx))
+    }
 
-      if (tx.type === 'artwork') {
-        // Vente unique : l'œuvre ne se vend qu'une fois (mise à jour conditionnelle)
-        const { data: sold } = await supabaseAdmin
-          .from('artworks')
-          .update({ sold: true, sold_at: new Date().toISOString(), sold_price: tx.amount, sold_currency: 'XOF', for_sale: false })
-          .eq('id', tx.artwork_id)
-          .eq('sold', false)
-          .select('id')
-        if (!sold?.length) {
-          await supabaseAdmin.from('transactions').update({ status: 'completed_unavailable' }).eq('transaction_id', token)
-          return res.status(200).send('artwork already sold')
-        }
-      } else if (tx.type === 'subscription') {
-        await activateSubscription(tx.user_id)
+    // Page de retour : le front envoie la référence de la transaction (URL /artwork-success/<ref>)
+    if (req.method === 'POST' && s0 === 'payments' && s1 === 'paydunya-callback') {
+      const ref = String(req.body?.token || '')
+      if (!ref) return res.status(400).json({ error: 'Référence manquante' })
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref)
+
+      const { data: tx } = await supabaseAdmin
+        .from('transactions')
+        .select("id, buyer_id, status, artwork_id, amount, payment_ref")
+        .eq(isUuid ? "id" : "payment_ref", ref)
+        .maybeSingle()
+      if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
+
+      // Paiement pas encore confirmé : on le demande à PayDunya, comme pour la notification
+      if (tx.status === 'pending' && !String(tx.payment_ref).startsWith('pending-')) {
+        const confirmRes = await fetch(`${PAYDUNYA_BASE}/checkout-invoice/confirm/${encodeURIComponent(tx.payment_ref)}`, {
+          headers: paydunyaHeaders(),
+        })
+        const confirmed = await confirmRes.json().catch(() => ({}))
+        if (String(confirmed.status).toLowerCase() === 'completed') await settleTransaction(tx)
       }
 
-      await supabaseAdmin.from('transactions').update({ status: 'completed' }).eq('transaction_id', token)
-      return res.status(200).send('OK')
+      const { data: fresh } = await supabaseAdmin
+        .from('transactions')
+        .select('status, amount, currency, artwork_id')
+        .eq('id', tx.id)
+        .single()
+      const { data: artwork } = fresh.artwork_id
+        ? await supabaseAdmin.from('artworks').select('id, title, image').eq('id', fresh.artwork_id).maybeSingle()
+        : { data: null }
+      return res.status(200).json({
+        success: true,
+        data: { status: fresh.status, amount: fresh.amount, currency: fresh.currency, artwork },
+      })
     }
 
     // Activation manuelle par un admin (secours si la notification n'arrive pas)
