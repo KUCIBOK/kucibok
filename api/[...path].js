@@ -1993,7 +1993,12 @@ export default async function handler(req, res) {
       const invoice = await invoiceRes.json().catch(() => ({}))
       if (invoice.response_code !== '00' || !invoice.token) {
         await supabaseAdmin.from('transactions').update({ status: 'failed' }).eq('id', txRef)
-        return res.status(502).json({ error: 'Paiement indisponible, réessayez plus tard' })
+        // Diagnostic : réponse PayDunya (code et message uniquement, jamais les clés)
+        console.error('[PayDunya invoice]', invoice.response_code, invoice.response_text)
+        return res.status(502).json({
+          error: 'Paiement indisponible, réessayez plus tard',
+          paydunya: { response_code: invoice.response_code ?? null, response_text: invoice.response_text ?? null },
+        })
       }
       await supabaseAdmin.from('transactions').update({ payment_ref: invoice.token }).eq('id', txRef)
 
