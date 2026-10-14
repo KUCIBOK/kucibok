@@ -162,6 +162,10 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
     const nameInput = nameField(page)
     const original = await nameInput.inputValue()
     await nameInput.fill(`${original} ${TAG}`.trim())
+    // Reproduit l'action signalée : ajouter un numéro de téléphone
+    const phoneField = page.locator('label:has-text("Téléphone") + input, input[name="telephone"]').first()
+    const originalPhone = await phoneField.inputValue()
+    await phoneField.fill('+221700000000')
     await page.getByRole('button', { name: /enregistrer|sauvegarder|save/i }).first().click()
     await page.waitForTimeout(4000)
 
@@ -172,8 +176,9 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
     // Le rechargement ramène à l'accueil du dashboard : on revient au profil par le menu
     await openProfil(page)
     await expect(nameField(page)).toHaveValue(new RegExp(TAG.replace(/[[\]]/g, '\\$&')))
-    // Restauration du nom d'origine
+    // Restauration du nom et du téléphone d'origine
     await nameField(page).fill(original)
+    await page.locator('label:has-text("Téléphone") + input, input[name="telephone"]').first().fill(originalPhone)
     await page.getByRole('button', { name: /enregistrer|sauvegarder|save/i }).first().click()
   })
 })
