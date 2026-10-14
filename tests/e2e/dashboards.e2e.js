@@ -89,6 +89,16 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
     await page.locator('.ql-editor').first().click()
     await page.keyboard.type('Description de test automatisé.')
     await page.getByRole('button', { name: 'Suivant', exact: true }).click()
+    // Diagnostic : si l'étape 2 n'apparaît pas, on liste les champs que le navigateur juge invalides
+    await page.waitForTimeout(2_000)
+    if (!(await page.locator('input[type="file"]').count())) {
+      const invalid = await page.evaluate(() =>
+        Array.from(document.querySelectorAll(':invalid')).map(
+          (el) => `${el.tagName} id="${el.id}" name="${el.name}" placeholder="${el.placeholder || ''}" message="${el.validationMessage}"`
+        )
+      )
+      throw new Error(`Étape 1 bloquée. Champs invalides :\n${invalid.join('\n') || '(aucun champ marqué invalide)'}`)
+    }
     // Étape 2 : photo
     await page.locator('input[type="file"]').setInputFiles(FIXTURE)
     await page.getByRole('button', { name: 'Suivant', exact: true }).click()
