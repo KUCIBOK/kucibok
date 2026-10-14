@@ -113,9 +113,12 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
       }
     })
 
-    // Le groupe « Compte » est replié dans le menu : on l'ouvre avant de cliquer sur « Profil »
-    await page.getByRole('button', { name: /compte/i }).first().click().catch(() => {})
-    await page.getByRole('link', { name: /profil/i }).first().click()
+    // « Profil » est un élément du menu (pas forcément un lien) : on le cherche par son texte dans le menu
+    const profilItem = page.locator('nav').getByText(/^Profil$/).first()
+    if (!(await profilItem.isVisible())) {
+      await page.locator('nav').getByText(/^Compte$/).first().click()
+    }
+    await profilItem.click()
     await page.waitForLoadState('networkidle')
     const nameInput = page.getByLabel(/nom complet|full name/i).first()
     const original = await nameInput.inputValue()
