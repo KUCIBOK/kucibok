@@ -83,7 +83,11 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
     await page.getByRole('link', { name: /ajouter|soumettre|nouvelle/i }).first().click().catch(() => page.goto('/dashboard/artist/submit-artwork'))
     // Étape 1 : détails (titre + description, obligatoires)
     await page.getByPlaceholder('Titre de l\'oeuvre').fill(`${TAG} œuvre`)
-    await page.locator('.ql-editor').first().fill('Description de test automatisé.')
+    // Catégorie (liste déroulante obligatoire) : première option non vide
+    await page.locator('select#category').selectOption({ index: 1 })
+    // Description (éditeur riche) : saisie au clavier pour que l'éditeur la prenne en compte
+    await page.locator('.ql-editor').first().click()
+    await page.keyboard.type('Description de test automatisé.')
     await page.getByRole('button', { name: 'Suivant', exact: true }).click()
     // Étape 2 : photo
     await page.locator('input[type="file"]').setInputFiles(FIXTURE)
