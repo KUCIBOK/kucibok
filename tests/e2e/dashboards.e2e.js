@@ -97,7 +97,10 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
           (el) => `${el.tagName} id="${el.id}" name="${el.name}" placeholder="${el.placeholder || ''}" message="${el.validationMessage}"`
         )
       )
-      throw new Error(`Étape 1 bloquée. Champs invalides :\n${invalid.join('\n') || '(aucun champ marqué invalide)'}`)
+      const visibleText = await page.evaluate(() => document.body.innerText.slice(0, 800))
+      throw new Error(
+        `Étape 1 bloquée (adresse : ${page.url()}).\nChamps invalides : ${invalid.join(' | ') || 'aucun'}\nTexte visible :\n${visibleText}`
+      )
     }
     // Étape 2 : photo
     await page.locator('input[type="file"]').setInputFiles(FIXTURE)
