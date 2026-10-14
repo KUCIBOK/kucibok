@@ -36,11 +36,12 @@ async function openProfil(page) {
 
 // Ouvre « Mes œuvres » : on déplie le groupe « Mes Œuvres & Ventes » s'il est replié
 async function openMesOeuvres(page) {
-  const lien = page.getByRole('link', { name: /mes œuvres/i }).first()
-  if (!(await lien.isVisible().catch(() => false))) {
-    await page.locator('nav').getByText(/œuvres/i).first().click()
+  // Sous-menu du groupe « Mes Œuvres & Ventes » : entrée « Mes Œuvres » (texte exact)
+  const item = page.locator('nav').getByText(/^Mes Œuvres$/i).first()
+  if (!(await item.isVisible().catch(() => false))) {
+    await page.locator('nav').getByText(/^Mes Œuvres & Ventes$/i).first().click()
   }
-  await page.getByRole('link', { name: /mes œuvres/i }).first().click()
+  await item.click()
   await page.waitForLoadState('networkidle')
 }
 
