@@ -80,9 +80,10 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
   test('ajout d\'une œuvre : assistant en 4 étapes', async ({ page }) => {
     // Ouvre le groupe « Mes Œuvres & Ventes » puis le lien d'ajout ; à défaut, la page directe
     await page.getByRole('button', { name: /œuvres/i }).first().click().catch(() => {})
-    await page.getByRole('link', { name: /ajouter|soumettre|nouvelle/i }).first().click().catch(() => page.goto('/submit-artwork'))
-    // Étape 1 : détails
+    await page.getByRole('link', { name: /ajouter|soumettre|nouvelle/i }).first().click().catch(() => page.goto('/dashboard/artist/submit-artwork'))
+    // Étape 1 : détails (titre + description, obligatoires)
     await page.getByPlaceholder('Titre de l\'oeuvre').fill(`${TAG} œuvre`)
+    await page.locator('.ql-editor').first().fill('Description de test automatisé.')
     await page.getByRole('button', { name: 'Suivant', exact: true }).click()
     // Étape 2 : photo
     await page.locator('input[type="file"]').setInputFiles(FIXTURE)
