@@ -134,9 +134,9 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
 
   test('modification du titre d\'une œuvre de test', async ({ page }) => {
     await openMesOeuvres(page)
-    const card = page.getByText(TAG).first()
-    await card.click()
-    await page.getByRole('button', { name: /modifier/i }).first().click()
+    // Ligne de l'œuvre de test : bouton d'édition (dernière action de la ligne)
+    await page.getByPlaceholder(/Rechercher/).first().fill(TAG)
+    await page.locator('tr', { hasText: TAG }).first().locator('a, button').last().click()
     const title = page.getByPlaceholder('Titre de l\'œuvre').or(page.getByPlaceholder('Titre de l\'oeuvre'))
     await title.fill(`${TAG} modifiée`)
     await page.getByRole('button', { name: /enregistrer|sauvegarder|mettre à jour/i }).first().click()
