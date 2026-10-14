@@ -24,6 +24,21 @@ async function login(page, { email, password, home }) {
   await page.getByRole('button', { name: 'Refuser', exact: true }).click({ timeout: 5_000 }).catch(() => {})
 }
 
+// Ouvre la page Profil par le menu (groupe « Compte »)
+async function openProfil(page) {
+  const profilItem = page.locator('nav').getByText(/^Profil$/).first()
+  if (!(await profilItem.isVisible())) {
+    await page.locator('nav').getByText(/^Compte$/).first().click()
+  }
+  await profilItem.click()
+  await page.waitForLoadState('networkidle')
+}
+
+// Champ « Nom complet » du profil : libellé associé ou attribut name
+function nameField(page) {
+  return page.locator('label:has-text("Nom complet") + input, input[name="name"]').first()
+}
+
 // Ouvre chaque entrée du menu latéral et vérifie qu'aucun écran ne plante.
 async function crawlMenu(page) {
   const entries = page.locator('nav a[href], nav button')
@@ -113,14 +128,8 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
       }
     })
 
-    // « Profil » est un élément du menu (pas forcément un lien) : on le cherche par son texte dans le menu
-    const profilItem = page.locator('nav').getByText(/^Profil$/).first()
-    if (!(await profilItem.isVisible())) {
-      await page.locator('nav').getByText(/^Compte$/).first().click()
-    }
-    await profilItem.click()
-    await page.waitForLoadState('networkidle')
-    const nameInput = page.getByLabel(/nom complet|full name/i).first()
+    await openProfil(page)
+    const nameInput = nameField(page)
     const original = await nameInput.inputValue()
     await nameInput.fill(`${original} ${TAG}`.trim())
     await page.getByRole('button', { name: /enregistrer|sauvegarder|save/i }).first().click()
@@ -130,11 +139,11 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
       throw new Error(`Sauvegarde en erreur. Appels pendant la sauvegarde :\n${trace.join('\n') || '(aucun appel serveur)'}`)
     }
 
-    await page.reload()
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByLabel(/nom complet|full name/i).first()).toHaveValue(new RegExp(TAG.replace(/[[\]]/g, '\\$&')))
+    // Le rechargement ramène à l'accueil du dashboard : on revient au profil par le menu
+    await openProfil(page)
+    await expect(nameField(page)).toHaveValue(new RegExp(TAG.replace(/[[\]]/g, '\\$&')))
     // Restauration du nom d'origine
-    await page.getByLabel(/nom complet|full name/i).first().fill(original)
+    await nameField(page).fill(original)
     await page.getByRole('button', { name: /enregistrer|sauvegarder|save/i }).first().click()
   })
 })
