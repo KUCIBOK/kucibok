@@ -34,6 +34,16 @@ async function openProfil(page) {
   await page.waitForLoadState('networkidle')
 }
 
+// Ouvre « Mes œuvres » : on déplie le groupe « Mes Œuvres & Ventes » s'il est replié
+async function openMesOeuvres(page) {
+  const lien = page.getByRole('link', { name: /mes œuvres/i }).first()
+  if (!(await lien.isVisible().catch(() => false))) {
+    await page.locator('nav').getByText(/œuvres/i).first().click()
+  }
+  await page.getByRole('link', { name: /mes œuvres/i }).first().click()
+  await page.waitForLoadState('networkidle')
+}
+
 // Champ « Nom complet » du profil : libellé associé ou attribut name
 function nameField(page) {
   return page.locator('label:has-text("Nom complet") + input, input[name="name"]').first()
@@ -117,14 +127,12 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
   })
 
   test('l\'œuvre de test apparaît dans « Mes œuvres »', async ({ page }) => {
-    await page.locator('aside').getByText(/œuvres/i).first().click()
-    await page.waitForLoadState('networkidle')
+    await openMesOeuvres(page)
     await expect(page.getByText(TAG).first()).toBeVisible({ timeout: 30_000 })
   })
 
   test('modification du titre d\'une œuvre de test', async ({ page }) => {
-    await page.locator('aside').getByText(/œuvres/i).first().click()
-    await page.waitForLoadState('networkidle')
+    await openMesOeuvres(page)
     const card = page.getByText(TAG).first()
     await card.click()
     await page.getByRole('button', { name: /modifier/i }).first().click()
