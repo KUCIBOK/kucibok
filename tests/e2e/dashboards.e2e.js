@@ -129,6 +129,8 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
 
   test('l\'œuvre de test apparaît dans « Mes œuvres »', async ({ page }) => {
     await openMesOeuvres(page)
+    // La liste commence par les œuvres approuvées : on cherche le marqueur de test
+    await page.getByPlaceholder(/Rechercher/).first().fill(TAG)
     await expect(page.getByText(TAG).first()).toBeVisible({ timeout: 30_000 })
   })
 
