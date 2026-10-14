@@ -341,7 +341,10 @@ export default async function handler(req, res) {
         res.status(auth.status).json({ error: auth.error })
         return null // EARLY RETURN — prevents further execution
       }
-      return auth.user || null
+      if (!auth.user) return null
+      // Le rôle applicatif vient de la table users : le JWT Supabase porte 'authenticated', jamais 'artist'
+      const { data: dbUser } = await supabaseAdmin.from('users').select('role').eq('id', auth.user.id).maybeSingle()
+      return { ...auth.user, role: dbUser?.role ?? 'buyer' }
     }
 
     // ✅ Rate Limiting Check
@@ -2969,6 +2972,13 @@ export default async function handler(req, res) {
             return res.status(400).json({
               error: 'Missing required fields: artwork_id, artwork_title, artist_name',
             })
+          }
+
+          // Propriété : on ne génère un certificat que pour sa propre œuvre (ou en admin)
+          const { data: certArtwork } = await supabaseAdmin.from('artworks').select('user_id').eq('id', artwork_id).maybeSingle()
+          if (!certArtwork) return res.status(404).json({ error: 'Artwork not found' })
+          if (certArtwork.user_id !== user.id && user.role !== 'admin') {
+            return res.status(403).json({ error: 'You can only generate certificates for your own artworks' })
           }
 
           // Generate KCB certificate number (KCB-XXXXXXXX format)
