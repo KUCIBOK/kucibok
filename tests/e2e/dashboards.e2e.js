@@ -88,6 +88,9 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
     // Description (éditeur riche) : saisie au clavier pour que l'éditeur la prenne en compte
     await page.locator('.ql-editor').first().click()
     await page.keyboard.type('Description de test automatisé.')
+    // Mots-clés : au moins un est obligatoire à l'étape 1
+    await page.getByPlaceholder('Ajoutez des mots-clés').fill('test-e2e')
+    await page.getByRole('button', { name: 'Ajouter mot-clé' }).click()
     await page.getByRole('button', { name: 'Suivant', exact: true }).click()
     // Diagnostic : si l'étape 2 n'apparaît pas, on liste les champs que le navigateur juge invalides
     await page.waitForTimeout(2_000)
