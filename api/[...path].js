@@ -2688,12 +2688,10 @@ export default async function handler(req, res) {
         }
 
         // ✅ CRITICAL: Prevent privilege escalation (cannot change user_id or user fields)
-        const body = { ...req.body }
-        delete body.user_id
-        delete body.id
-        delete body.name        // ← user field, not artist field
-        delete body.email       // ← user field, not artist field
-        delete body.telephone   // ← user field, not artist field
+        // Liste blanche : l'artiste ne modifie que les champs de son profil public
+        // (jamais featured, tier, total_sales, artwork_count, user_id…)
+        const ARTIST_EDITABLE = ['username', 'country', 'biography', 'portfolio', 'image', 'facebook', 'twitter', 'instagram', 'website', 'location', 'interests', 'qualifications', 'institution', 'description']
+        const body = Object.fromEntries(Object.entries(req.body || {}).filter(([key]) => ARTIST_EDITABLE.includes(key)))
 
         // Remove empty values to avoid overwriting with nulls
         Object.keys(body).forEach(key => {
