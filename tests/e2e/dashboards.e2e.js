@@ -20,6 +20,8 @@ async function login(page, { email, password, home }) {
   await page.getByPlaceholder('Votre mot de passe').fill(password)
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click()
   await page.waitForURL(new RegExp(home.replace(/\//g, '\\/')), { timeout: 30_000 })
+  // La bannière de consentement recouvre la page et bloque les clics : on la ferme (« Refuser »)
+  await page.getByRole('button', { name: 'Refuser', exact: true }).click({ timeout: 5_000 }).catch(() => {})
 }
 
 // Ouvre chaque entrée du menu latéral et vérifie qu'aucun écran ne plante.
