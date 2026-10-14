@@ -1759,6 +1759,13 @@ export default async function handler(req, res) {
 
           // Return first result if array, otherwise return data as-is
           const result = Array.isArray(data) ? data[0] : data
+          if (!result) {
+            // Aucune ligne renvoyée par la mise à jour : on relit le profil pour répondre avec les vraies données
+            console.warn('[PUT /auth/:id] update returned no row for', s1)
+            const { data: current } = await supabaseAdmin.from('users').select('*').eq('id', s1).maybeSingle()
+            if (!current) return res.status(404).json({ error: 'Profil utilisateur introuvable' })
+            return res.status(200).json({ success: true, data: current })
+          }
           return res.status(200).json({ success: true, data: result })
         } catch (err) {
           console.error('[Auth Update Error]', err.message)
