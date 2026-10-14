@@ -24,10 +24,12 @@ async function login(page, { email, password, home }) {
 
 // Ouvre chaque entrée du menu latéral et vérifie qu'aucun écran ne plante.
 async function crawlMenu(page) {
-  const count = await page.locator('aside nav button').count()
+  const entries = page.locator('nav a[href], nav button')
+  const count = await entries.count()
   expect(count, 'le menu doit contenir des entrées').toBeGreaterThan(0)
   for (let i = 0; i < count; i++) {
-    const entry = page.locator('aside nav button').nth(i)
+    const entry = page.locator('nav a[href], nav button').nth(i)
+    if (!(await entry.isVisible())) continue
     const label = (await entry.innerText()).trim()
     await entry.click()
     await page.waitForLoadState('networkidle')
@@ -93,12 +95,32 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
   })
 
   test('modification du nom du profil, puis restauration', async ({ page }) => {
-    await page.locator('aside').getByText(/profil/i).first().click()
+    // Diagnostic : on note les appels serveur et les erreurs console pendant la sauvegarde
+    const trace = []
+    page.on('response', async (r) => {
+      if (r.request().method() !== 'GET' && r.url().includes('/api/')) {
+        const body = await r.text().catch(() => '')
+        trace.push(`${r.request().method()} ${r.url()} -> ${r.status()} ${body.slice(0, 300)}`)
+      }
+    })
+    page.on('console', (m) => {
+      if (m.type() === 'error' && !/analytics|doubleclick|Content Security Policy|contentscript/i.test(m.text())) {
+        trace.push(`console: ${m.text().slice(0, 300)}`)
+      }
+    })
+
+    await page.locator('nav a', { hasText: /profil/i }).first().click()
     await page.waitForLoadState('networkidle')
     const nameInput = page.getByLabel(/nom complet|full name/i).first()
     const original = await nameInput.inputValue()
     await nameInput.fill(`${original} ${TAG}`.trim())
     await page.getByRole('button', { name: /enregistrer|sauvegarder|save/i }).first().click()
+    await page.waitForTimeout(4000)
+
+    if (await page.getByText(/Erreur lors de la sauvegarde/i).count()) {
+      throw new Error(`Sauvegarde en erreur. Appels pendant la sauvegarde :\n${trace.join('\n') || '(aucun appel serveur)'}`)
+    }
+
     await page.reload()
     await page.waitForLoadState('networkidle')
     await expect(page.getByLabel(/nom complet|full name/i).first()).toHaveValue(new RegExp(TAG.replace(/[[\]]/g, '\\$&')))
