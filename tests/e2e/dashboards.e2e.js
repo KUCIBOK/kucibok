@@ -61,7 +61,9 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
   test.beforeEach(async ({ page }) => login(page, artist))
 
   test('ajout d\'une œuvre : assistant en 4 étapes', async ({ page }) => {
-    await page.goto('/submit-artwork')
+    // Ouvre le groupe « Mes Œuvres & Ventes » puis le lien d'ajout ; à défaut, la page directe
+    await page.getByRole('button', { name: /œuvres/i }).first().click().catch(() => {})
+    await page.getByRole('link', { name: /ajouter|soumettre|nouvelle/i }).first().click().catch(() => page.goto('/submit-artwork'))
     // Étape 1 : détails
     await page.getByPlaceholder('Titre de l\'oeuvre').fill(`${TAG} œuvre`)
     await page.getByRole('button', { name: 'Suivant', exact: true }).click()
@@ -109,7 +111,9 @@ test.describe('Dashboard artiste — œuvres et profil', () => {
       }
     })
 
-    await page.locator('nav a', { hasText: /profil/i }).first().click()
+    // Le groupe « Compte » est replié dans le menu : on l'ouvre avant de cliquer sur « Profil »
+    await page.getByRole('button', { name: /compte/i }).first().click().catch(() => {})
+    await page.getByRole('link', { name: /profil/i }).first().click()
     await page.waitForLoadState('networkidle')
     const nameInput = page.getByLabel(/nom complet|full name/i).first()
     const original = await nameInput.inputValue()
