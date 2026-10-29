@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useArtists } from '../../api/useArtistsQuery' /* ✨ React Query */
 import { useApprovedArtworks } from '../../api/useAdminArtworksQuery' /* ✨ React Query */
+import { ErrorState } from '../ui'
 import { ExternalLink, Image, Search, Shield, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const PER_PAGE = 25
@@ -9,8 +10,13 @@ const PER_PAGE = 25
  * Onglet admin — liste de tous les artistes avec statistiques.
  */
 export function AdminArtistsTab() {
-  const { data: artists = [] } = useArtists() /* ✨ React Query */
-  const { data: approved = [] } = useApprovedArtworks() /* ✨ React Query */
+  const {
+    data: artists = [],
+    isLoading: artistsLoading,
+    error: artistsError,
+    refetch: refetchArtists,
+  } = useArtists() /* ✨ React Query */
+  const { data: approved = [], error: approvedError } = useApprovedArtworks() /* ✨ React Query */
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
@@ -60,6 +66,22 @@ export function AdminArtistsTab() {
           />
         </div>
       </div>
+
+      {artistsError && (
+        <ErrorState
+          title="Impossible de charger les artistes"
+          error={artistsError}
+          onRetry={refetchArtists}
+          className="mb-4"
+        />
+      )}
+      {approvedError && (
+        <ErrorState
+          title="Compteurs d'œuvres indisponibles"
+          error={approvedError}
+          className="mb-4"
+        />
+      )}
 
       {/* Table */}
       <div className="overflow-x-auto rounded-[4px] border border-white/[0.06]">
@@ -149,9 +171,13 @@ export function AdminArtistsTab() {
             {paged.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-10 text-center text-kcb-pierre">
-                  {search
-                    ? 'Aucun artiste correspond à la recherche.'
-                    : 'Aucun artiste enregistré.'}
+                  {artistsLoading
+                    ? 'Chargement…'
+                    : artistsError
+                      ? 'Liste indisponible.'
+                      : search
+                        ? 'Aucun artiste correspond à la recherche.'
+                        : 'Aucun artiste enregistré.'}
                 </td>
               </tr>
             )}

@@ -8,8 +8,11 @@ import { utils } from './useAPI'
 
 async function fetchArtists() {
   const res = await fetch(`${utils.api}/artists`, utils.options)
-  if (!res.ok) throw new Error('Failed to fetch artists')
-  return res.json()
+  if (!res.ok) throw new Error(`Impossible de charger les artistes (HTTP ${res.status})`)
+  const body = await res.json()
+  const list = body?.artists ?? body?.data ?? body
+  if (!Array.isArray(list)) throw new Error("Format de réponse inattendu pour la liste des artistes")
+  return list
 }
 
 /**

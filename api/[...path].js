@@ -223,6 +223,13 @@ export default async function handler(req, res) {
     const s1 = path[1] // Second segment
     const s2 = path[2] // Third segment
 
+    // Les endpoints artistes sont publics : jamais de ventes ni de gains
+    const toPublicArtist = (artist) => {
+      if (!artist) return artist
+      const { total_sales: _sales, total_earnings: _earnings, ...publicArtist } = artist
+      return publicArtist
+    }
+
     // ─── Essai et lecture seule (curateur et conseiller uniquement) ──────────
     // Essai de 14 jours créé automatiquement. Après l'essai, sans abonnement actif,
     // le compte reste en lecture seule : les écritures sont refusées.
@@ -1147,7 +1154,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
           success: true,
-          artists: data || [],
+          artists: (data || []).map(toPublicArtist),
           count: (data || []).length,
         })
       }
@@ -1166,7 +1173,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
           success: true,
-          data,
+          data: toPublicArtist(data),
         })
       }
 
@@ -2432,7 +2439,7 @@ export default async function handler(req, res) {
         if (error) {
           return res.status(200).json({ success: true, data: [], count: 0 })
         }
-        return res.status(200).json({ success: true, data: data || [], count: (data || []).length })
+        return res.status(200).json({ success: true, data: (data || []).map(toPublicArtist), count: (data || []).length })
       } catch (err) {
         return res.status(200).json({ success: true, data: [], count: 0 })
       }
@@ -3837,7 +3844,7 @@ export default async function handler(req, res) {
 
         const { data: artworks, error: err } = await supabaseAdmin
           .from('artworks')
-          .select('id, kucibok_id, title, category, artist_id, status, created_at')
+          .select('id, kucibok_id, title, category, image, price, currency, visited, etherscan, certificate_path, artist_id, user_id, status, created_at, artists(id, name)')
           .eq('status', status)
           .order('created_at', { ascending: false })
           .limit(parseInt(limit))
@@ -3848,7 +3855,11 @@ export default async function handler(req, res) {
         }
 
         console.log('[GET /api/admin/artworks-list] Loaded:', artworks?.length, status)
-        return res.status(200).json({ artworks: artworks || [] })
+        const list = (artworks || []).map(({ artists: artistRow, ...artwork }) => ({
+          ...artwork,
+          artist: artistRow?.name || 'Artiste inconnu',
+        }))
+        return res.status(200).json({ artworks: list })
       } catch (error) {
         console.error('[Admin Artworks List Error]', error)
         return res.status(500).json({ error: error.message })

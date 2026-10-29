@@ -24,6 +24,7 @@ export { Accordion, AccordionGroup, AccordionItem } from './Accordion'
 export { Progress, CircularProgress, StepProgress } from './Progress'
 export { Skeleton, SkeletonKPI, SkeletonTable, SkeletonCard, SkeletonChart } from './Skeleton'
 export { EmptyState } from './EmptyState'
+export { ErrorState } from './ErrorState'
 export { Tooltip } from './Tooltip'
 export { Popover } from './Popover'
 

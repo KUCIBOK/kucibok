@@ -14,14 +14,17 @@ import {
   updateBlogPost,
 } from './useBlogPost'
 
+function ensureList(result, label) {
+  if (Array.isArray(result)) return result
+  throw new Error(result?.error || `Impossible de charger les articles ${label}`)
+}
+
 async function fetchBlogPosts() {
-  const posts = await getPublishedPosts()
-  return posts || []
+  return ensureList(await getPublishedPosts(), 'publiés')
 }
 
 async function fetchArchivePosts() {
-  const posts = await getArchivedPosts()
-  return posts || []
+  return ensureList(await getArchivedPosts(), 'archivés')
 }
 
 export function useBlogPosts() {
@@ -108,6 +111,7 @@ export function useBlog() {
     blogPosts: publishedQuery.data || [],
     archive: archiveQuery.data || [],
     loading: publishedQuery.isLoading || archiveQuery.isLoading,
+    error: publishedQuery.error || archiveQuery.error,
     addPost: (payload) => addPostMutation.mutateAsync(payload),
     publishPost: (id) => publishPostMutation.mutateAsync(id),
     archivePost: (id) => archivePostMutation.mutateAsync(id),

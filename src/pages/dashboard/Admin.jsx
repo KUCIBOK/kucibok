@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../../store/AuthContext'
 import { useLang } from '../../store/LangContext'
 import { uiT } from '../../i18n/ui'
-import { CURRENCIES } from '../../lib/currency'
+import { useQueryClient } from '@tanstack/react-query'
 import { ArtworksList } from '../../components/artworks/ArtworksList'
 import { useDashboardStats } from '../../api/useDashboardArtworksQuery' /* ✨ React Query */
 import {
@@ -48,12 +48,14 @@ import SupportTicketTab from '../../components/admin/SupportTicketTab'
 import LogidooDashboard from '../../components/admin/LogidooDashboard'
 import { AdminArtistsTab } from '../../components/admin/AdminArtistsTab'
 export default function Admin() {
-  const { pending, approved, rejected } = useDashboardStats() /* ✨ React Query */
+  const queryClient = useQueryClient()
+  const { pending, approved, rejected, pendingError, approvedError, rejectedError } =
+    useDashboardStats() /* ✨ React Query */
+  const retryArtworks = () => queryClient.invalidateQueries({ queryKey: ['artworks'] })
   const { numerisations } = useNumerisation()
   const [toggle, setToggle] = useState(false)
   const { user, loading } = useAuth()
   const [tab, setTab] = useState(0)
-  const [currency, setCurrency] = useState('EUR')
   const { lang } = useLang()
   const td = uiT[lang].dashboards.admin
 
@@ -125,13 +127,40 @@ export default function Admin() {
   const renderTab = () => {
     switch (tab) {
       case 0:
-        return <Analytics currency={currency} />
+        return <Analytics onOpenPending={() => setTab(1)} onOpenUsers={() => setTab(4)} />
       case 1:
-        return <ArtworksList user={user} title={td.titles.pendingArtworks} artworks={pending} />
+        return (
+          <ArtworksList
+            user={user}
+            title={td.titles.pendingArtworks}
+            artworks={pending}
+            error={pendingError}
+            onRetry={retryArtworks}
+            emptyMessage="Aucune œuvre en attente de validation."
+          />
+        )
       case 2:
-        return <ArtworksList user={user} title={td.titles.approvedArtworks} artworks={approved} />
+        return (
+          <ArtworksList
+            user={user}
+            title={td.titles.approvedArtworks}
+            artworks={approved}
+            error={approvedError}
+            onRetry={retryArtworks}
+            emptyMessage="Aucune œuvre approuvée."
+          />
+        )
       case 3:
-        return <ArtworksList user={user} title={td.titles.rejectedArtworks} artworks={rejected} />
+        return (
+          <ArtworksList
+            user={user}
+            title={td.titles.rejectedArtworks}
+            artworks={rejected}
+            error={rejectedError}
+            onRetry={retryArtworks}
+            emptyMessage="Aucune œuvre rejetée."
+          />
+        )
       case 4:
         return <UsersTab />
       case 5:
@@ -220,30 +249,13 @@ export default function Admin() {
         />
         {/* Main content */}
         <main className="flex-1 px-4 md:px-8 py-8 overflow-y-auto">
-          {/* Breadcrumb + Currency switcher */}
+          {/* Breadcrumb */}
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-kcb-pierre">
               <span>{getCurrentPageInfo().category}</span>
               <ChevronRight className="w-4 h-4" />
               <span className="text-white font-medium">{getCurrentPageInfo().page}</span>
             </div>
-            {tab === 0 && (
-              <div className="flex items-center gap-1 bg-kcb-ardoise border border-white/[0.06] rounded-[4px] p-1">
-                {CURRENCIES.map((c) => (
-                  <button
-                    key={c.code}
-                    onClick={() => setCurrency(c.code)}
-                    className={`px-3 py-1 rounded text-xs font-medium transition ${
-                      currency === c.code
-                        ? 'bg-kcb-or text-kcb-noir'
-                        : 'text-kcb-pierre hover:text-white'
-                    }`}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="lg:hidden flex justify-end mb-4">

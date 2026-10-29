@@ -1,28 +1,15 @@
 import { Plus } from 'lucide-react'
 import { useBlog } from '../../api/useBlogQuery'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { BlogTable } from './BlogTable'
 import { useAuth } from '../../store/AuthContext'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
-import { Modal, Input, Button, toast } from '../ui'
+import { Modal, Input, Button, ErrorState, toast } from '../ui'
 
 export function BlogTab() {
-  const { blogPosts, archive } = useBlog()
+  const { blogPosts, archive, loading, error } = useBlog()
   const [showModal, setShowModal] = useState(false)
-  // Track initial load: the context starts with empty arrays and populates
-  // asynchronously. We consider loading done once either array has data OR
-  // a short settle window has elapsed (500 ms) to avoid infinite skeleton.
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (blogPosts.length > 0 || archive.length > 0) {
-      setLoading(false)  
-      return
-    }
-    const timer = setTimeout(() => setLoading(false), 500)
-    return () => clearTimeout(timer)
-  }, [blogPosts, archive])
 
   return (
     <>
@@ -36,6 +23,7 @@ export function BlogTab() {
             <Plus className="w-4 h-4" /> Ajouter
           </button>
         </div>
+        {error && <ErrorState title="Impossible de charger les articles" error={error} className="mb-4" />}
         <div className="mb-6">
           <h3 className="text-base font-semibold text-kcb-sable mb-2">Articles publiés</h3>
           <BlogTable posts={blogPosts} loading={loading} />

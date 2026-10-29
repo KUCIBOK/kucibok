@@ -11,8 +11,11 @@ import { utils } from './useAPI'
  */
 async function fetchApprovedArtworks() {
   const res = await fetch(`${utils.api}/artworks?status=approved`, utils.options)
-  if (!res.ok) throw new Error('Failed to fetch approved artworks')
-  return res.json()
+  if (!res.ok) throw new Error(`Impossible de charger les œuvres approuvées (HTTP ${res.status})`)
+  const body = await res.json()
+  const list = body?.data ?? body
+  if (!Array.isArray(list)) throw new Error("Format de réponse inattendu pour les œuvres approuvées")
+  return list
 }
 
 /**
