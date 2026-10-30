@@ -45,11 +45,13 @@ const readRawBody = async (req) => {
   return Buffer.concat(chunks)
 }
 
-/** Extrait le premier fichier d'un corps multipart/form-data. */
-export const parseMultipartFile = (buffer, contentType) => {
+/** Analyse un corps multipart/form-data : champs texte et fichiers. */
+export const parseMultipart = (buffer, contentType) => {
   const boundary = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType || '')
   if (!boundary || !buffer) return null
   const delimiter = Buffer.from(`--${boundary[1] || boundary[2]}`)
+  const fields = {}
+  const files = []
   let start = buffer.indexOf(delimiter)
   while (start !== -1) {
     const next = buffer.indexOf(delimiter, start + delimiter.length)
@@ -58,16 +60,26 @@ export const parseMultipartFile = (buffer, contentType) => {
     const headerEnd = part.indexOf('\r\n\r\n')
     if (headerEnd !== -1) {
       const headers = part.subarray(0, headerEnd).toString('utf8')
+      const name = /name="([^"]*)"/i.exec(headers)?.[1]
       const filename = /filename="([^"]*)"/i.exec(headers)?.[1]
+      let content = part.subarray(headerEnd + 4)
+      if (content.subarray(-2).toString() === '\r\n') content = content.subarray(0, -2)
       if (filename !== undefined) {
-        let content = part.subarray(headerEnd + 4)
-        if (content.subarray(-2).toString() === '\r\n') content = content.subarray(0, -2)
-        return { filename, content }
+        const mime = /content-type:\s*([^\r\n;]+)/i.exec(headers)?.[1]?.trim() || 'application/octet-stream'
+        files.push({ name, filename, contentType: mime, content })
+      } else if (name) {
+        fields[name] = content.toString('utf8')
       }
     }
     start = next
   }
-  return null
+  return { fields, files }
+}
+
+/** Extrait le premier fichier d'un corps multipart/form-data. */
+export const parseMultipartFile = (buffer, contentType) => {
+  const parsed = parseMultipart(buffer, contentType)
+  return parsed?.files[0] ? { filename: parsed.files[0].filename, content: parsed.files[0].content } : null
 }
 
 /** Analyse CSV minimale (guillemets, virgules ou points-virgules). */
@@ -425,6 +437,330 @@ export async function handleExtraRoutes(ctx) {
     const { data, error } = await supabaseAdmin.from('sourcing_inquiries').insert(row).select().single()
     if (error) return dbError(error)
     return send(201, { success: true, data })
+  }
+
+  // ─── Catégories ────────────────────────────────────────────────────────────
+  if (s0 === 'category') {
+    const shape = (c) => ({ ...c, _id: c.id, title: c.name })
+    if (method === 'GET' && !s1) {
+      const { data, error } = await supabaseAdmin.from('categories').select('id, name, image, created_at').order('name', { ascending: true }).limit(500)
+      if (error) return dbError(error)
+      return send(200, { success: true, data: (data || []).map(shape) })
+    }
+    if (method === 'POST' && !s1) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const name = String(req.body?.title ?? req.body?.name ?? '').trim()
+      if (name.length < 2 || name.length > 60) return send(400, { error: 'Le nom de la catégorie doit contenir entre 2 et 60 caractères' })
+      const { data, error } = await supabaseAdmin.from('categories').insert({ name, image: req.body?.image || null }).select().single()
+      if (error?.code === '23505') return send(409, { error: 'Cette catégorie existe déjà' })
+      if (error) return dbError(error)
+      return send(201, { success: true, data: shape(data) })
+    }
+    if (method === 'DELETE' && s1 && UUID_RE.test(s1)) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const { data, error } = await supabaseAdmin.from('categories').delete().eq('id', s1).select()
+      if (error) return dbError(error)
+      if (!data?.length) return send(404, { error: 'Catégorie introuvable' })
+      return send(200, { success: true, data: shape(data[0]) })
+    }
+    return false
+  }
+
+  // ─── Plans d'abonnement ────────────────────────────────────────────────────
+  if (s0 === 'plan') {
+    const PLAN_ROLES = ['buyer', 'artist', 'curator', 'advisor']
+    const CURRENCIES = ['XOF', 'USD', 'EUR']
+    const DURATIONS = { monthly: 30, yearly: 365 }
+    const shape = (p) => ({
+      ...p, _id: p.id,
+      duration: p.duration_days >= 365 ? 'yearly' : 'monthly',
+      features: Array.isArray(p.features) ? p.features : [],
+    })
+    // Valide et convertit le corps du formulaire admin ; renvoie { error } ou { row }
+    const readPlan = (body, partial) => {
+      const row = {}
+      if (!partial || body.name !== undefined) {
+        const name = String(body.name ?? '').trim()
+        if (name.length < 2 || name.length > 80) return { error: 'Le nom du plan doit contenir entre 2 et 80 caractères' }
+        row.name = name
+      }
+      if (!partial || body.price !== undefined) {
+        const price = Number(body.price)
+        if (!Number.isFinite(price) || price < 0) return { error: 'Le prix doit être un nombre positif ou nul' }
+        row.price = price
+      }
+      if (body.currency !== undefined) {
+        if (!CURRENCIES.includes(body.currency)) return { error: `Devise invalide. Valeurs : ${CURRENCIES.join(', ')}` }
+        row.currency = body.currency
+      }
+      if (body.duration !== undefined) {
+        if (!(body.duration in DURATIONS)) return { error: 'Durée invalide. Valeurs : monthly, yearly' }
+        row.duration_days = DURATIONS[body.duration]
+      }
+      if (body.role !== undefined) {
+        if (body.role !== null && !PLAN_ROLES.includes(body.role)) return { error: `Rôle invalide. Valeurs : ${PLAN_ROLES.join(', ')}` }
+        row.role = body.role
+      }
+      if (body.description !== undefined) row.description = body.description ? String(body.description).slice(0, 500) : null
+      if (body.features !== undefined) {
+        if (!Array.isArray(body.features) || body.features.length > 20 || body.features.some((f) => typeof f !== 'string' || !f.trim() || f.length > 120)) {
+          return { error: 'features doit être une liste de 20 textes maximum (120 caractères chacun)' }
+        }
+        row.features = body.features.map((f) => f.trim())
+      }
+      if (body.is_active !== undefined) row.is_active = !!body.is_active
+      return { row }
+    }
+    if (method === 'GET' && !s1) {
+      // Visiteurs : plans actifs ; admin connecté : tous
+      const viewer = await checkAuth(req)
+      let query = supabaseAdmin.from('plans').select('*').order('price', { ascending: true }).limit(200)
+      if (viewer.error || viewer.role !== 'admin') query = query.eq('is_active', true)
+      const { data, error } = await query
+      if (error) return dbError(error)
+      return send(200, { success: true, data: (data || []).map(shape) })
+    }
+    if (method === 'GET' && s1 && UUID_RE.test(s1)) {
+      const { data, error } = await supabaseAdmin.from('plans').select('*').eq('id', s1).maybeSingle()
+      if (error) return dbError(error)
+      if (!data) return send(404, { error: 'Plan introuvable' })
+      if (data.is_active === false) {
+        const viewer = await checkAuth(req)
+        if (viewer.error || viewer.role !== 'admin') return send(404, { error: 'Plan introuvable' })
+      }
+      return send(200, { success: true, data: shape(data) })
+    }
+    if (method === 'POST' && !s1) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const { row, error: invalid } = readPlan(req.body || {}, false)
+      if (invalid) return send(400, { error: invalid })
+      const { data, error } = await supabaseAdmin.from('plans').insert({ currency: 'EUR', duration_days: 30, ...row }).select().single()
+      if (error) return dbError(error)
+      return send(201, { success: true, data: shape(data) })
+    }
+    if (method === 'PUT' && s1 && UUID_RE.test(s1)) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const { row, error: invalid } = readPlan(req.body || {}, true)
+      if (invalid) return send(400, { error: invalid })
+      if (!Object.keys(row).length) return send(400, { error: 'Nothing to update' })
+      const { data, error } = await supabaseAdmin.from('plans').update(row).eq('id', s1).select().maybeSingle()
+      if (error) return dbError(error)
+      if (!data) return send(404, { error: 'Plan introuvable' })
+      return send(200, { success: true, data: shape(data) })
+    }
+    if (method === 'DELETE' && s1 && UUID_RE.test(s1)) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const { data, error } = await supabaseAdmin.from('plans').delete().eq('id', s1).select()
+      if (error?.code === '23503') return send(409, { error: 'Ce plan est utilisé par des abonnements : désactivez-le (is_active) plutôt que de le supprimer' })
+      if (error) return dbError(error)
+      if (!data?.length) return send(404, { error: 'Plan introuvable' })
+      return send(200, { success: true, data: shape(data[0]) })
+    }
+    return false
+  }
+
+  // ─── Avis des professionnels sur les œuvres ───────────────────────────────
+  if (s0 === 'review') {
+    if (method === 'GET' && s1 === 'artwork' && s2 && UUID_RE.test(s2)) {
+      const { data: artwork } = await supabaseAdmin.from('artworks').select('id, status').eq('id', s2).maybeSingle()
+      if (!artwork || !['approved', 'sold'].includes(artwork.status)) return send(404, { error: 'Œuvre introuvable' })
+      const { data, error } = await supabaseAdmin
+        .from('reviews').select('id, artwork_id, professional_id, rating, comment, created_at').eq('artwork_id', s2).order('created_at', { ascending: false }).limit(200)
+      if (error) return dbError(error)
+      const ids = [...new Set((data || []).map((r) => r.professional_id))]
+      const { data: authors } = ids.length ? await supabaseAdmin.from('users').select('id, name').in('id', ids) : { data: [] }
+      const names = Object.fromEntries((authors || []).map((a) => [a.id, a.name]))
+      return send(200, (data || []).map((r) => ({ ...r, _id: r.id, authorName: names[r.professional_id] || null })))
+    }
+    if (method === 'POST' && !s1) {
+      const auth = await authenticate(); if (!auth) return true
+      if (!['curator', 'advisor', 'admin'].includes(auth.role)) return send(403, { error: 'Seuls les curateurs et advisors peuvent publier un avis' })
+      const { artwork_id, artworkId, rating, comment } = req.body || {}
+      const targetId = artwork_id || artworkId
+      if (!targetId || !UUID_RE.test(String(targetId))) return send(400, { error: 'artwork_id is required' })
+      const score = Number(rating)
+      if (!Number.isInteger(score) || score < 1 || score > 5) return send(400, { error: 'La note doit être un entier de 1 à 5' })
+      const text = String(comment ?? '').replace(/<[^>]*>/g, '').trim().slice(0, 2000)
+      const { data: artwork } = await supabaseAdmin.from('artworks').select('id, status').eq('id', targetId).maybeSingle()
+      if (!artwork || !['approved', 'sold'].includes(artwork.status)) return send(404, { error: 'Œuvre introuvable' })
+      // Un seul avis par professionnel et par œuvre : le nouvel avis remplace l'ancien
+      const { data: existing } = await supabaseAdmin.from('reviews').select('id').eq('artwork_id', targetId).eq('professional_id', auth.userId).maybeSingle()
+      const { data, error } = existing
+        ? await supabaseAdmin.from('reviews').update({ rating: score, comment: text || null }).eq('id', existing.id).select().single()
+        : await supabaseAdmin.from('reviews').insert({ artwork_id: targetId, professional_id: auth.userId, rating: score, comment: text || null }).select().single()
+      if (error) return dbError(error)
+      return send(existing ? 200 : 201, { ...data, _id: data.id })
+    }
+    return false
+  }
+
+  // ─── Blog ──────────────────────────────────────────────────────────────────
+  if (s0 === 'blog') {
+    const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }
+    const MAX_IMAGE = 5 * 1024 * 1024
+    const postShape = (p, comments) => ({
+      ...p, _id: p.id,
+      status: p.archived ? 'archived' : p.published ? 'published' : 'draft',
+      authorId: p.user_id,
+      visited: p.views ?? 0,
+      publishDate: p.published_at || p.created_at,
+      tags: Array.isArray(p.tags) ? p.tags : [],
+      ...(comments ? { comments } : {}),
+    })
+    const listPosts = async (filter) => {
+      let query = supabaseAdmin.from('blog_posts').select('*').order('created_at', { ascending: false }).limit(200)
+      query = filter(query)
+      const { data, error } = await query
+      if (error) return dbError(error)
+      return send(200, { success: true, data: (data || []).map((p) => postShape(p)) })
+    }
+    // Lit titre, extrait, contenu, tags et image d'un formulaire multipart ou JSON
+    const readPostForm = async () => {
+      const contentType = req.headers?.['content-type'] || ''
+      let fields = {}
+      let file = null
+      if (/multipart\/form-data/i.test(contentType)) {
+        const parsed = parseMultipart(await readRawBody(req), contentType)
+        if (!parsed) return { error: 'Corps multipart illisible' }
+        fields = parsed.fields
+        file = parsed.files.find((f) => f.name === 'image' && f.content.length) || null
+      } else fields = req.body || {}
+      const out = {}
+      if (fields.title !== undefined) {
+        const title = String(fields.title).trim()
+        if (title.length < 5 || title.length > 200) return { error: 'Le titre doit contenir entre 5 et 200 caractères' }
+        out.title = title
+      }
+      if (fields.excerpt !== undefined) {
+        const excerpt = String(fields.excerpt).replace(/<[^>]*>/g, '').trim()
+        if (excerpt.length < 5 || excerpt.length > 500) return { error: 'L’extrait doit contenir entre 5 et 500 caractères' }
+        out.excerpt = excerpt
+      }
+      if (fields.content !== undefined) out.content = ctx.sanitizeHtml(String(fields.content)).slice(0, 100000)
+      if (fields.category !== undefined) out.category = String(fields.category).slice(0, 60) || null
+      if (fields.tags !== undefined) {
+        const raw = Array.isArray(fields.tags) ? fields.tags : String(fields.tags).split(',')
+        const tags = raw.map((t) => String(t).trim()).filter(Boolean)
+        if (tags.length > 5 || tags.some((t) => t.length > 12)) return { error: '5 mots-clés maximum, 12 caractères chacun' }
+        out.tags = tags
+      }
+      if (file) {
+        const ext = IMAGE_TYPES[file.contentType]
+        if (!ext) return { error: 'Image : formats acceptés JPEG, PNG, WebP, GIF' }
+        if (file.content.length > MAX_IMAGE) return { error: 'Image : 5 Mo maximum' }
+        out._image = { ext, content: file.content, contentType: file.contentType }
+      }
+      return { out }
+    }
+    const uploadImage = async (postId, image) => {
+      const filePath = `posts/${postId}/${Date.now()}.${image.ext}`
+      const { error } = await supabaseAdmin.storage.from('blogs').upload(filePath, image.content, { contentType: image.contentType, upsert: true })
+      if (error) return { error: error.message }
+      return { url: supabaseAdmin.storage.from('blogs').getPublicUrl(filePath).data.publicUrl }
+    }
+
+    if (method === 'GET' && s1 === 'published' && !s2) return listPosts((q) => q.eq('published', true).eq('archived', false))
+    if (method === 'GET' && s1 === 'archived' && !s2) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      return listPosts((q) => q.eq('archived', true))
+    }
+    if (method === 'GET' && !s1) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      return listPosts((q) => q)
+    }
+    if (method === 'GET' && s1 && UUID_RE.test(s1) && !s2) {
+      const { data: post, error } = await supabaseAdmin.from('blog_posts').select('*').eq('id', s1).maybeSingle()
+      if (error) return dbError(error)
+      const viewer = await checkAuth(req)
+      const isAdmin = !viewer.error && viewer.role === 'admin'
+      if (!post || ((!post.published || post.archived) && !isAdmin)) return send(404, { error: 'Article introuvable' })
+      if (post.published && !post.archived) {
+        post.views = (post.views ?? 0) + 1
+        await supabaseAdmin.from('blog_posts').update({ views: post.views }).eq('id', s1)
+      }
+      const { data: rows } = await supabaseAdmin.from('blog_comments').select('id, user_id, content, created_at').eq('post_id', s1).order('created_at', { ascending: true }).limit(500)
+      const comments = (rows || []).map((c) => ({ ...c, _id: c.id, authorId: c.user_id }))
+      return send(200, { success: true, data: postShape(post, comments) })
+    }
+    if (method === 'POST' && !s1) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const { out, error: invalid } = await readPostForm()
+      if (invalid) return send(400, { error: invalid })
+      if (!out.title || !out.excerpt || !out.content) return send(400, { error: 'title, excerpt et content sont obligatoires' })
+      const { _image, ...fields } = out
+      const { data, error } = await supabaseAdmin.from('blog_posts')
+        .insert({ ...fields, user_id: admin.userId, published: true, archived: false, published_at: new Date().toISOString() }).select().single()
+      if (error) return dbError(error)
+      let post = data
+      if (_image) {
+        const uploaded = await uploadImage(post.id, _image)
+        if (uploaded.error) {
+          await supabaseAdmin.from('blog_posts').delete().eq('id', post.id)
+          return send(500, { error: `Téléversement de l’image impossible : ${uploaded.error}` })
+        }
+        const { data: withImage } = await supabaseAdmin.from('blog_posts').update({ image: uploaded.url }).eq('id', post.id).select().single()
+        post = withImage || post
+      }
+      return send(201, { success: true, data: postShape(post) })
+    }
+    if (method === 'PUT' && s1 && UUID_RE.test(s1) && !s2) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const { out, error: invalid } = await readPostForm()
+      if (invalid) return send(400, { error: invalid })
+      const { _image, ...fields } = out
+      if (_image) {
+        const uploaded = await uploadImage(s1, _image)
+        if (uploaded.error) return send(500, { error: `Téléversement de l’image impossible : ${uploaded.error}` })
+        fields.image = uploaded.url
+      }
+      if (!Object.keys(fields).length) return send(400, { error: 'Nothing to update' })
+      const { data, error } = await supabaseAdmin.from('blog_posts').update({ ...fields, updated_at: new Date().toISOString() }).eq('id', s1).select().maybeSingle()
+      if (error) return dbError(error)
+      if (!data) return send(404, { error: 'Article introuvable' })
+      return send(200, { success: true, data: postShape(data) })
+    }
+    // Publication / archivage : mutations, donc POST (le front envoyait un GET)
+    if (['POST', 'PUT'].includes(method) && ['publish', 'archive'].includes(s1) && s2 && UUID_RE.test(s2)) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const publishing = s1 === 'publish'
+      const patch = publishing
+        ? { published: true, archived: false, published_at: new Date().toISOString() }
+        : { published: false, archived: true }
+      const { data, error } = await supabaseAdmin.from('blog_posts').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', s2).select().maybeSingle()
+      if (error) return dbError(error)
+      if (!data) return send(404, { error: 'Article introuvable' })
+      return send(200, { success: true, data: postShape(data) })
+    }
+    if (method === 'DELETE' && s1 && UUID_RE.test(s1) && !s2) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const { data, error } = await supabaseAdmin.from('blog_posts').delete().eq('id', s1).select('id')
+      if (error) return dbError(error)
+      if (!data?.length) return send(404, { error: 'Article introuvable' })
+      return send(200, { success: true, data: { id: s1, _id: s1 } })
+    }
+    // Commentaires : texte brut, utilisateur connecté, article publié
+    if (method === 'POST' && s1 === 'comment' && s2 && UUID_RE.test(s2)) {
+      const auth = await authenticate(); if (!auth) return true
+      const content = String(req.body?.content ?? req.body?.text ?? '').replace(/<[^>]*>/g, '').trim()
+      if (!content) return send(400, { error: 'Le commentaire est vide' })
+      if (content.length > 2000) return send(400, { error: 'Le commentaire est limité à 2000 caractères' })
+      const { data: post } = await supabaseAdmin.from('blog_posts').select('id, published, archived').eq('id', s2).maybeSingle()
+      if (!post || !post.published || post.archived) return send(404, { error: 'Article introuvable' })
+      const { error } = await supabaseAdmin.from('blog_comments').insert({ post_id: s2, user_id: auth.userId, content })
+      if (error) return dbError(error)
+      const { data: full } = await supabaseAdmin.from('blog_posts').select('*').eq('id', s2).single()
+      const { data: rows } = await supabaseAdmin.from('blog_comments').select('id, user_id, content, created_at').eq('post_id', s2).order('created_at', { ascending: true }).limit(500)
+      const comments = (rows || []).map((c) => ({ ...c, _id: c.id, authorId: c.user_id }))
+      return send(201, { success: true, data: postShape(full, comments) })
+    }
+    if (method === 'DELETE' && s1 === 'comment' && s2 && UUID_RE.test(s2)) {
+      const admin = await authenticateAdmin(); if (!admin) return true
+      const { data, error } = await supabaseAdmin.from('blog_comments').delete().eq('id', s2).select('id')
+      if (error) return dbError(error)
+      if (!data?.length) return send(404, { error: 'Commentaire introuvable' })
+      return send(200, { success: true })
+    }
+    return false
   }
 
   // ─── Auth : mot de passe et gestion des utilisateurs ──────────────────────

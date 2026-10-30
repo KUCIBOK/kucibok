@@ -99,6 +99,7 @@ function UpdatePlanModal({ closeModal, plan }) {
   const roleOptions = [
     { value: 'buyer', label: 'Acheteur' },
     { value: 'curator', label: 'Curateur' },
+    { value: 'advisor', label: 'Advisor' },
   ]
 
   const handleUpdatePlan = async (e) => {

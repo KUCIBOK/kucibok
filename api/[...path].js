@@ -375,7 +375,7 @@ export default async function handler(req, res) {
     // ✅ Helper function: Sanitize HTML to prevent XSS
     // DOMPurify n'a pas de DOM en Node (sanitize indéfini) : filtre à liste blanche sans dépendance.
     // Tags autorisés sans attributs, sauf <a> qui ne garde qu'un href http(s).
-    const SAFE_TAGS = new Set(['b', 'i', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h2', 'h3'])
+    const SAFE_TAGS = new Set(['b', 'i', 'u', 's', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'code', 'pre'])
     const sanitizeHtml = (html) => {
       if (!html || typeof html !== 'string') return ''
       return html
@@ -2563,13 +2563,6 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     // PLANS ROUTE
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'plan' && req.method === 'GET' && !s1) {
-      const mockPlans = [
-        { id: 1, name: 'Starter', price: 27, features: ['Feature 1', 'Feature 2'], trial_days: 14 },
-        { id: 2, name: 'Professional', price: 57, features: ['All Starter', 'Feature 3', 'Feature 4'], trial_days: 14 },
-      ]
-      return res.status(200).json({ success: true, data: mockPlans })
-    }
 
     // ─────────────────────────────────────────────────────────────
     // ARTIST ROUTES
@@ -2592,22 +2585,10 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     // CATEGORY ROUTES
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'category' && req.method === 'GET' && !s1) {
-      const mockCategories = [
-        { id: 1, name: 'Painting', slug: 'painting' },
-        { id: 2, name: 'Sculpture', slug: 'sculpture' },
-        { id: 3, name: 'Photography', slug: 'photography' },
-        { id: 4, name: 'Mixed Media', slug: 'mixed-media' },
-      ]
-      return res.status(200).json({ success: true, data: mockCategories })
-    }
 
     // ─────────────────────────────────────────────────────────────
     // BLOG ROUTES
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'blog' && (s1 === 'published' || s1 === 'archived') && req.method === 'GET') {
-      return res.status(200).json({ success: true, data: [], count: 0 })
-    }
 
     // ─────────────────────────────────────────────────────────────
     // VISITOR ROUTE (tracking)
@@ -4603,7 +4584,7 @@ export default async function handler(req, res) {
     }
 
     // Routes complémentaires (notifications, galeries, livraisons, numérisation, auth…)
-    if (await handleExtraRoutes({ req, res, path, supabaseAdmin, checkAuth, createExpedition, toDeliveryClient, sendAdminNotification })) return
+    if (await handleExtraRoutes({ req, res, path, supabaseAdmin, checkAuth, createExpedition, toDeliveryClient, sendAdminNotification, sanitizeHtml })) return
 
     // Route not found
     res.status(404).json({

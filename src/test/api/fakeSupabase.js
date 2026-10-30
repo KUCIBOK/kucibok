@@ -6,11 +6,20 @@
 const COLUMN_DEFAULTS = {
   logistics_alerts: { read: false, metadata: {} },
   notifications: { read: false, metadata: {} },
+  plans: { is_active: true, currency: 'XOF', duration_days: 30 },
+  blog_posts: { published: false, archived: false, views: 0 },
+}
+
+// Clés étrangères sans ON DELETE CASCADE : supprimer le parent échoue (23503) tant qu'un enfant existe
+const FK_CHILDREN = {
+  plans: [['subscriptions', 'plan_id']],
 }
 
 // Contraintes UNIQUE de la base (erreur 23505 à l'insertion d'un doublon)
 const UNIQUE_KEYS = {
   shortlisted_artworks: ['user_id', 'artwork_id'],
+  categories: ['name'],
+  reviews: ['artwork_id', 'professional_id'],
 }
 
 let counter = 0
@@ -106,6 +115,11 @@ export function createFakeDb(seed = {}) {
         rows.forEach((r) => Object.assign(r, this.payload))
       } else if (this.op === 'delete') {
         rows = this.matching()
+        for (const [childTable, column] of FK_CHILDREN[this.name] || []) {
+          if (rows.some((r) => table(childTable).some((c) => c[column] === r.id))) {
+            return { data: null, error: { code: '23503', message: `violates foreign key constraint on ${childTable}` } }
+          }
+        }
         tables[this.name] = table(this.name).filter((r) => !rows.includes(r))
       } else {
         rows = this.matching()
