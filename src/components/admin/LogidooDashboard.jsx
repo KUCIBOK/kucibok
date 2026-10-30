@@ -222,7 +222,7 @@ export default function LogidooDashboard() {
           <div className="space-y-3">
             {alerts.map((alert) => (
               <div
-                key={alert._id}
+                key={alert.id}
                 className={`p-4 rounded-[4px] border ${getSeverityColor(alert.severity)} ${
                   !alert.read ? 'opacity-100' : 'opacity-60'
                 }`}
@@ -254,7 +254,7 @@ export default function LogidooDashboard() {
                   <div className="flex gap-2">
                     {!alert.read && (
                       <button
-                        onClick={() => handleMarkRead(alert._id)}
+                        onClick={() => handleMarkRead(alert.id)}
                         className="p-2 hover:bg-white/10 rounded transition"
                         title="Marquer comme lu"
                       >

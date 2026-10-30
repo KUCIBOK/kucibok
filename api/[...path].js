@@ -3754,6 +3754,147 @@ export default async function handler(req, res) {
       }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // LOGISTICS ALERTS — admin uniquement (table logistics_alerts, migration 034)
+    //   GET   /api/logistics/alerts?limit=      liste (plus récentes d'abord)
+    //   GET   /api/logistics/alerts/stats       compteurs
+    //   PATCH /api/logistics/alerts/read-all    tout marquer comme lu
+    //   PATCH /api/logistics/alerts/:id/read    marquer une alerte comme lue
+    //   POST  /api/logistics/sync               génère les alertes depuis delivery_events
+    // ─────────────────────────────────────────────────────────────
+    if (s0 === 'logistics') {
+      try {
+        const admin = await checkAuth(req)
+        if (admin.error) return res.status(admin.status || 401).json({ success: false, error: admin.error })
+        if (admin.role !== 'admin') return res.status(403).json({ success: false, error: 'Admin access required' })
+
+        const TABLE_HINT = 'Table logistics_alerts absente : appliquer supabase/migrations/034_logistics_alerts.sql'
+        const failure = (err) =>
+          res.status(500).json({ success: false, error: /logistics_alerts/.test(err.message || '') ? TABLE_HINT : err.message })
+        const toClient = ({ tracking_id, ...alert }) => ({ ...alert, trackingId: tracking_id })
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+        // GET /api/logistics/alerts/stats
+        if (req.method === 'GET' && s1 === 'alerts' && s2 === 'stats') {
+          const { data, error } = await supabaseAdmin.from('logistics_alerts').select('type, severity, read, created_at')
+          if (error) return failure(error)
+          const since = Date.now() - 24 * 60 * 60 * 1000
+          const count = (key) =>
+            (data || []).reduce((acc, a) => ({ ...acc, [a[key]]: (acc[a[key]] || 0) + 1 }), {})
+          return res.status(200).json({
+            success: true,
+            stats: {
+              total: (data || []).length,
+              unread: (data || []).filter((a) => !a.read).length,
+              last24h: (data || []).filter((a) => Date.parse(a.created_at) >= since).length,
+              byType: count('type'),
+              bySeverity: count('severity'),
+            },
+          })
+        }
+
+        // GET /api/logistics/alerts
+        if (req.method === 'GET' && s1 === 'alerts' && !s2) {
+          const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 20, 1), 100)
+          const { data, error } = await supabaseAdmin
+            .from('logistics_alerts')
+            .select('id, delivery_id, tracking_id, type, severity, title, message, metadata, read, created_at')
+            .order('created_at', { ascending: false })
+            .limit(limit)
+          if (error) return failure(error)
+          return res.status(200).json({ success: true, alerts: (data || []).map(toClient) })
+        }
+
+        // PATCH /api/logistics/alerts/read-all
+        if (req.method === 'PATCH' && s1 === 'alerts' && s2 === 'read-all') {
+          const { error } = await supabaseAdmin.from('logistics_alerts').update({ read: true }).eq('read', false)
+          if (error) return failure(error)
+          return res.status(200).json({ success: true })
+        }
+
+        // PATCH /api/logistics/alerts/:id/read
+        if (req.method === 'PATCH' && s1 === 'alerts' && s2 && path[3] === 'read') {
+          if (!UUID_RE.test(s2)) return res.status(400).json({ success: false, error: 'Invalid alert id' })
+          const { data, error } = await supabaseAdmin
+            .from('logistics_alerts').update({ read: true }).eq('id', s2).select('id').maybeSingle()
+          if (error) return failure(error)
+          if (!data) return res.status(404).json({ success: false, error: 'Alert not found' })
+          return res.status(200).json({ success: true })
+        }
+
+        // POST /api/logistics/sync — alertes depuis les événements de livraison + retards
+        if (req.method === 'POST' && s1 === 'sync' && !s2) {
+          const SEVERITY = {
+            pending: ['created', 'info', 'Livraison créée'],
+            created: ['created', 'info', 'Livraison créée'],
+            in_transit: ['status_change', 'info', 'Colis en transit'],
+            picked_up: ['status_change', 'info', 'Colis collecté'],
+            customs: ['status_change', 'info', 'En douane'],
+            delivered: ['delivered', 'success', 'Colis livré'],
+            cancelled: ['cancelled', 'warning', 'Livraison annulée'],
+            exception: ['delivery_exception', 'critical', 'Incident de livraison'],
+            failed: ['delivery_exception', 'critical', 'Échec de livraison'],
+          }
+          const { data: events, error: evErr } = await supabaseAdmin
+            .from('delivery_events')
+            .select('id, delivery_id, status, note, date, delivery_requests(tracking_id)')
+            .order('date', { ascending: false })
+            .limit(200)
+          if (evErr) return failure(evErr)
+
+          const { data: known, error: knownErr } = await supabaseAdmin
+            .from('logistics_alerts').select('event_id').not('event_id', 'is', null)
+          if (knownErr) return failure(knownErr)
+          const seen = new Set((known || []).map((a) => a.event_id))
+
+          const rows = (events || []).filter((e) => !seen.has(e.id)).map((e) => {
+            const [type, severity, title] = SEVERITY[e.status] || ['status_change', 'info', `Statut : ${e.status}`]
+            return {
+              delivery_id: e.delivery_id,
+              event_id: e.id,
+              tracking_id: e.delivery_requests?.tracking_id || null,
+              type, severity, title,
+              message: e.note || null,
+              created_at: e.date || new Date().toISOString(),
+            }
+          })
+
+          // Retards : livraison prévue dépassée et non terminée
+          const { data: late, error: lateErr } = await supabaseAdmin
+            .from('delivery_requests')
+            .select('id, tracking_id, status, delivery_date')
+            .lt('delivery_date', new Date().toISOString())
+            .not('status', 'in', '(delivered,cancelled)')
+            .limit(200)
+          if (lateErr) return failure(lateErr)
+          const { data: lateKnown } = await supabaseAdmin
+            .from('logistics_alerts').select('delivery_id').eq('type', 'delay')
+          const delayed = new Set((lateKnown || []).map((a) => a.delivery_id))
+          for (const d of late || []) {
+            if (delayed.has(d.id)) continue
+            rows.push({
+              delivery_id: d.id,
+              tracking_id: d.tracking_id,
+              type: 'delay', severity: 'warning',
+              title: 'Livraison en retard',
+              message: `Date prévue dépassée (${new Date(d.delivery_date).toLocaleDateString('fr-FR')}), statut : ${d.status}`,
+            })
+          }
+
+          if (rows.length) {
+            const { error: insErr } = await supabaseAdmin.from('logistics_alerts').insert(rows)
+            if (insErr) return failure(insErr)
+          }
+          return res.status(200).json({ success: true, created: rows.length })
+        }
+
+        return res.status(404).json({ success: false, error: 'Logistics route not found' })
+      } catch (err) {
+        console.error('[Logistics Error]', err)
+        return res.status(500).json({ success: false, error: err.message })
+      }
+    }
+
     // ✨ GET /api/admin/stats — Real-time admin statistics
     if (s0 === 'admin' && s1 === 'stats' && req.method === 'GET') {
       try {
