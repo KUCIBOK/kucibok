@@ -5,6 +5,12 @@
 // Valeurs par défaut des colonnes (DEFAULT SQL) que le faux client doit reproduire
 const COLUMN_DEFAULTS = {
   logistics_alerts: { read: false, metadata: {} },
+  notifications: { read: false, metadata: {} },
+}
+
+// Contraintes UNIQUE de la base (erreur 23505 à l'insertion d'un doublon)
+const UNIQUE_KEYS = {
+  shortlisted_artworks: ['user_id', 'artwork_id'],
 }
 
 let counter = 0
@@ -17,6 +23,7 @@ export function createFakeDb(seed = {}) {
   const tables = {}
   for (const [name, rows] of Object.entries(seed)) tables[name] = rows.map((r) => ({ ...r }))
   const sessions = {} // token -> auth user
+  const passwords = {} // email -> mot de passe
   const calls = []
 
   const table = (name) => (tables[name] ||= [])
@@ -85,6 +92,10 @@ export function createFakeDb(seed = {}) {
       let rows
       if (this.op === 'insert' || this.op === 'upsert') {
         const list = Array.isArray(this.payload) ? this.payload : [this.payload]
+        const unique = UNIQUE_KEYS[this.name]
+        if (unique && list.some((p) => table(this.name).some((r) => unique.every((k) => r[k] === p[k])))) {
+          return { data: null, error: { code: '23505', message: `duplicate key value violates unique constraint on ${this.name}` } }
+        }
         rows = list.map((p) => {
           const row = { id: uuid(), created_at: new Date().toISOString(), ...(COLUMN_DEFAULTS[this.name] || {}), ...p }
           table(this.name).push(row)
@@ -116,10 +127,11 @@ export function createFakeDb(seed = {}) {
     tables,
     calls,
     failTables: new Set(),
-    addUser({ id = uuid(), email, role = 'buyer', name, token }) {
+    addUser({ id = uuid(), email, role = 'buyer', name, token, password = 'Password123!' }) {
       const t = token || `token-${id}`
       // Comme Supabase Auth : `role` vaut toujours 'authenticated', le rôle métier est dans la table users
       sessions[t] = { id, email: email || `${id}@test.local`, role: 'authenticated', user_metadata: {} }
+      passwords[sessions[t].email] = password
       table('users').push({ id, email: sessions[t].email, role, name: name || email || id })
       return { id, token: t }
     },
@@ -131,7 +143,30 @@ export function createFakeDb(seed = {}) {
           const user = sessions[token]
           return user ? { data: { user }, error: null } : { data: { user: null }, error: { message: 'invalid' } }
         },
+        signInWithPassword: async ({ email, password }) => {
+          const ok = passwords[email] === password
+          return ok ? { data: { user: { email } }, error: null } : { data: null, error: { message: 'Invalid login credentials' } }
+        },
         admin: {
+          updateUserById: async (id, attrs) => {
+            const user = Object.values(sessions).find((u) => u.id === id)
+            if (!user) return { data: null, error: { message: 'User not found' } }
+            if (attrs.password) passwords[user.email] = attrs.password
+            if ('ban_duration' in attrs) user.banned = attrs.ban_duration !== 'none'
+            return { data: { user }, error: null }
+          },
+          createUser: async ({ email, password, user_metadata }) => {
+            if (Object.values(sessions).some((u) => u.email === email)) return { data: null, error: { message: 'User already registered' } }
+            const created = db.addUser({ email, role: user_metadata?.role || 'buyer' })
+            passwords[email] = password
+            return { data: { user: { id: created.id, email } }, error: null }
+          },
+          deleteUser: async (id) => {
+            for (const [t, u] of Object.entries(sessions)) if (u.id === id) delete sessions[t]
+            tables.users = table('users').filter((u) => u.id !== id)
+            return { data: {}, error: null }
+          },
+          signOut: async () => ({ error: null }),
           getUserById: async (id) => ({ data: { user: Object.values(sessions).find((u) => u.id === id) || null }, error: null }),
           listUsers: async () => ({ data: { users: Object.values(sessions) }, error: null }),
         },

@@ -8,6 +8,7 @@ import { respondJSON, respondError, checkAuth } from './_lib/response.js'
 import { requireAuth } from './_lib/auth.js'
 import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
+import { handleExtraRoutes, createNotifier } from './_modules/extra-routes.js'
 import DOMPurify from 'dompurify'
 import PDFDocument from 'pdfkit'
 
@@ -230,6 +231,8 @@ export default async function handler(req, res) {
       return publicArtist
     }
 
+    const notify = createNotifier(supabaseAdmin)
+
     // ─── Logistique : suivi, expéditions ─────────────────────────────────────
     const newTrackingId = () => `KCB-TRK-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`
     // Forme attendue par le front (id et _id, trackingId en camelCase)
@@ -325,7 +328,7 @@ export default async function handler(req, res) {
       const { data: subs } = await supabaseAdmin.from('subscriptions').select('status, end_date').eq('user_id', userId)
       const now = Date.now()
       return (subs || []).some(
-        (s) => ['active', 'trial'].includes(s.status) && (!s.end_date || Date.parse(s.end_date) > now)
+        (s) => ['active', 'trial', 'cancelled'].includes(s.status) && (!s.end_date || Date.parse(s.end_date) > now)
       )
     }
     // Écritures interdites en lecture seule, sauf authentification, abonnement, paiement et profil
@@ -787,6 +790,18 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: 'Failed to update artwork status' })
         }
         if (!data?.length) return res.status(404).json({ error: 'Artwork not found' })
+        if (nextStatus !== 'pending' && data[0].user_id) {
+          const approved = nextStatus === 'approved'
+          await notify(data[0].user_id, {
+            type: 'artwork',
+            severity: approved ? 'success' : 'warning',
+            title: approved ? 'Œuvre approuvée' : 'Œuvre rejetée',
+            message: approved
+              ? `« ${data[0].title || 'Votre œuvre'} » est maintenant visible sur la plateforme.`
+              : `« ${data[0].title || 'Votre œuvre'} » n'a pas été retenue. Contactez le support pour en savoir plus.`,
+            metadata: { artwork_id: data[0].id, status: nextStatus },
+          })
+        }
         return res.status(200).json({ success: true, data: data[0] })
       }
 
@@ -2062,6 +2077,15 @@ export default async function handler(req, res) {
       }
 
       await supabaseAdmin.from('transactions').update({ status: 'completed' }).eq('id', tx.id)
+      if (tx.artwork_id && tx.seller_id) {
+        await notify(tx.seller_id, {
+          type: 'sale',
+          severity: 'success',
+          title: 'Œuvre vendue',
+          message: `Une de vos œuvres a été vendue pour ${Number(tx.amount).toLocaleString('fr-FR')} XOF.`,
+          metadata: { artwork_id: tx.artwork_id, transaction_id: tx.id },
+        })
+      }
       return 'OK'
     }
 
@@ -2162,7 +2186,7 @@ export default async function handler(req, res) {
 
       const { data: tx } = await supabaseAdmin
         .from('transactions')
-        .select("id, buyer_id, status, artwork_id, amount")
+        .select("id, buyer_id, seller_id, status, artwork_id, amount")
         .eq("payment_ref", token)
         .maybeSingle()
       if (!tx) return res.status(404).send('unknown transaction')
@@ -2177,7 +2201,7 @@ export default async function handler(req, res) {
 
       const { data: tx } = await supabaseAdmin
         .from('transactions')
-        .select("id, buyer_id, status, artwork_id, amount, payment_ref")
+        .select("id, buyer_id, seller_id, status, artwork_id, amount, payment_ref")
         .eq(isUuid ? "id" : "payment_ref", ref)
         .maybeSingle()
       if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
@@ -2306,43 +2330,46 @@ export default async function handler(req, res) {
           })
         }
 
-              const { artwork_id } = req.body || {}
-              if (!artwork_id) return res.status(400).json({ error: 'artwork_id requis' })
+        const { data, error } = await supabaseAdmin
+          .from('subscriptions')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .in('status', ['active', 'trial'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
 
-              const { data: artwork, error: artworkError } = await supabaseAdmin
-                .from('artworks').select('*').eq('id', artwork_id).single()
-              if (artworkError || !artwork) return res.status(404).json({ error: 'Œuvre introuvable' })
-              if (artwork.status !== 'approved') return res.status(400).json({ error: 'L’œuvre doit être approuvée' })
+        if (error && error.code !== 'PGRST116') {
+          // PGRST116 = no rows found
+          console.error('[GET /api/subscriptions/active] Query error:', error.message)
+          return res.status(500).json({ error: 'Subscription query failed' })
+        }
 
-              const isAdmin = user.role === 'admin'
-              let isOwner = artwork.user_id === user.id
-              if (!isOwner && artwork.artist_id) {
-                const { data: ownerArtist } = await supabaseAdmin.from('artists').select('user_id').eq('id', artwork.artist_id).maybeSingle()
-                isOwner = ownerArtist?.user_id === user.id
-              }
-              if (!isAdmin && !isOwner) return res.status(403).json({ error: 'Accès refusé' })
+        return res.status(200).json({
+          success: true,
+          data: data || null,
+        })
+      }
+    }
 
-              const { data: artist } = artwork.artist_id
-                ? await supabaseAdmin.from('artists').select('name').eq('id', artwork.artist_id).maybeSingle()
-                : { data: null }
-              const artistName = artist?.name || user.user_metadata?.name || 'Artiste Kucibok'
-              const kcbNumber = artwork.kucibok_id || `KCB-${Math.random().toString(36).slice(2, 10).toUpperCase()}`
-              const pdf = await createPdfBuffer((doc) => {
-                doc.fillColor('#B08D57').fontSize(24).text('CERTIFICAT KUCIBOK', { align: 'center' })
-                doc.moveDown(0.5).fillColor('#222').fontSize(12).text('Certificat d’authenticité et de provenance', { align: 'center' })
-                doc.moveDown(2).fontSize(16).text(artwork.title, { align: 'center' })
-                doc.moveDown().fontSize(11).text(`Artiste : ${artistName}`)
-                doc.text(`Identifiant KCB : ${kcbNumber}`)
-                doc.text(`Support : ${artwork.medium || 'Non renseigné'}`)
-                doc.text(`Dimensions : ${artwork.height || '—'} × ${artwork.width || '—'}`)
-                doc.text(`Émis le : ${new Date().toLocaleDateString('fr-FR')}`)
-                doc.moveDown(2).fontSize(10).fillColor('#555').text('Ce document certifie l’enregistrement de l’œuvre dans le Standard Kucibok. Vérification publique disponible sur kucibok.com.', { align: 'justify' })
-              })
-              const path = `certificates/${artwork_id}-${kcbNumber}.pdf`
-              const { error: uploadError } = await supabaseAdmin.storage.from('certificates').upload(path, pdf, { contentType: 'application/pdf', upsert: true })
-              if (uploadError) return res.status(500).json({ error: uploadError.message })
-              const { data, error } = await supabaseAdmin.from('artworks').update({ kucibok_id: kcbNumber, certificate_path: path }).eq('id', artwork_id).select().single()
-              if (error) return res.status(500).json({ error: error.message })
+    // ─────────────────────────────────────────────────────────────
+    // SHORTLIST ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'shortlist') {
+      // POST /api/shortlist/:artworkId — Add to shortlist
+      if (req.method === 'POST' && s1) {
+        // ✅ CRITICAL: Require authentication
+        const user = await getAuthUser()
+        if (!user) return
+
+        // ✅ CRITICAL: Use authenticated user_id, NOT from body
+        const user_id = user.id
+        const artworkId = s1
+
+        if (!user_id || !artworkId) {
+          return res.status(400).json({ error: 'Missing artworkId' })
+        }
 
         try {
           const { data, error } = await supabaseAdmin
@@ -3515,10 +3542,6 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     // NUMERISATION ROUTE
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'numerisation' && (s1 === 'my' || req.method === 'GET')) {
-      return res.status(200).json({ success: true, data: [] })
-    }
-
     // ─────────────────────────────────────────────────────────────
     // CLIENTS ROUTES (CRM for artists & advisors)
     // ─────────────────────────────────────────────────────────────
@@ -4334,7 +4357,7 @@ export default async function handler(req, res) {
         }
 
         console.log('[GET /api/admin/users-list] Loaded:', users?.length)
-        return res.status(200).json({ users: users || [] })
+        return res.status(200).json({ users: (users || []).map((u) => ({ ...u, _id: u.id })) })
       } catch (error) {
         console.error('[Admin Users List Error]', error)
         return res.status(500).json({ error: error.message })
@@ -4578,6 +4601,9 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: err.message })
       }
     }
+
+    // Routes complémentaires (notifications, galeries, livraisons, numérisation, auth…)
+    if (await handleExtraRoutes({ req, res, path, supabaseAdmin, checkAuth, createExpedition, toDeliveryClient, sendAdminNotification })) return
 
     // Route not found
     res.status(404).json({

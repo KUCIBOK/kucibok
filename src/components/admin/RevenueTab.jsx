@@ -9,7 +9,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { utils } from '../../api/useAPI'
-import { KPICard } from '../ui'
+import { KPICard, ErrorState } from '../ui'
 
 /** Libellés lisibles pour les types de transaction */
 const TYPE_LABELS = {
@@ -124,6 +124,7 @@ function computeMonthlyData(transactions) {
 export function RevenueTab() {
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [filterType, setFilterType] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterMonth, setFilterMonth] = useState('all')
@@ -136,8 +137,10 @@ export function RevenueTab() {
       const data = await res.json()
       const list = Array.isArray(data) ? data : (data?.data ?? [])
       setTransactions(list)
-    } catch {
+      setLoadError(null)
+    } catch (err) {
       setTransactions([])
+      setLoadError(err.message === 'API error' ? 'Transactions indisponibles' : err.message)
     } finally {
       setLoading(false)
     }
@@ -171,6 +174,7 @@ export function RevenueTab() {
 
   return (
     <div className="space-y-6 pb-10">
+      {loadError && <ErrorState title="Impossible de charger les transactions" error={loadError} onRetry={loadTransactions} />}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

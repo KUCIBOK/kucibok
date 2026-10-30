@@ -20,8 +20,8 @@ const { api } = utils
  */
 export async function addToShortlistSession(artworkId) {
   try {
-    const { data: session } = await supabase.auth.getSession()
-    const userId = session?.user?.id
+    const { data: sessionData } = await supabase.auth.getSession()
+    const userId = sessionData?.session?.user?.id
     if (!userId) {
       return { success: false, error: 'Not authenticated' }
     }
@@ -50,8 +50,8 @@ export async function addToShortlistSession(artworkId) {
  */
 export async function removeFromShortlistSession(artworkId) {
   try {
-    const { data: session } = await supabase.auth.getSession()
-    const userId = session?.user?.id
+    const { data: sessionData } = await supabase.auth.getSession()
+    const userId = sessionData?.session?.user?.id
     if (!userId) {
       return { success: false, error: 'Not authenticated' }
     }
@@ -80,8 +80,8 @@ export async function removeFromShortlistSession(artworkId) {
  */
 export async function checkShortlistedSession(artworkId) {
   try {
-    const { data: session } = await supabase.auth.getSession()
-    const userId = session?.user?.id
+    const { data: sessionData } = await supabase.auth.getSession()
+    const userId = sessionData?.session?.user?.id
     if (!userId) {
       return { success: false, error: 'Not authenticated' }
     }
@@ -105,8 +105,8 @@ export async function checkShortlistedSession(artworkId) {
  */
 export async function getMyShortlistSession() {
   try {
-    const { data: session } = await supabase.auth.getSession()
-    const userId = session?.user?.id
+    const { data: sessionData } = await supabase.auth.getSession()
+    const userId = sessionData?.session?.user?.id
     if (!userId) {
       return { success: false, error: 'Not authenticated', data: [] }
     }
@@ -134,8 +134,8 @@ export async function getMyShortlistSession() {
  */
 export async function useUpdateShortlistNotes(artworkId, notes) {
   try {
-    const { data: session } = await supabase.auth.getSession()
-    const userId = session?.user?.id
+    const { data: sessionData } = await supabase.auth.getSession()
+    const userId = sessionData?.session?.user?.id
     if (!userId) {
       return { success: false, error: 'Not authenticated' }
     }
