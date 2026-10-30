@@ -342,10 +342,12 @@ export default async function handler(req, res) {
     }
 
     // ✅ Helper function: Get authenticated user
+    // Renvoie l'utilisateur avec son rôle métier (table users). Le `role` de l'objet Supabase Auth
+    // vaut toujours 'authenticated' : s'y fier rendait inopérants tous les contrôles artist/curator/advisor/admin.
     const getAuthUser = async () => {
-      const auth = await requireAuth(req)
+      const auth = await checkAuth(req)
       if (auth.error) {
-        res.status(auth.status).json({ error: auth.error })
+        res.status(auth.status || 401).json({ error: auth.error })
         return null // EARLY RETURN — prevents further execution
       }
       return auth.user || null
@@ -691,6 +693,56 @@ export default async function handler(req, res) {
           success: true,
           data: data[0],
         })
+      }
+
+      // PUT /api/artworks/:id/approve — Modération (admin uniquement)
+      // Seule la modération admin pose approved / rejected ; le propriétaire ne le peut pas.
+      if (req.method === 'PUT' && s1 && s1 !== 'verify' && s2 === 'approve') {
+        const admin = await getAuthUser()
+        if (!admin) return
+        if (admin.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+        const MODERATION_STATUSES = ['approved', 'rejected', 'pending']
+        const nextStatus = req.body?.status
+        if (!MODERATION_STATUSES.includes(nextStatus)) {
+          return res.status(400).json({ error: `Invalid status. Must be one of: ${MODERATION_STATUSES.join(', ')}` })
+        }
+        const { data, error } = await supabaseAdmin
+          .from('artworks')
+          .update({ status: nextStatus })
+          .eq('id', s1)
+          .select()
+        if (error) {
+          console.error('[PUT /api/artworks/:id/approve] Update error:', error.message)
+          return res.status(500).json({ error: 'Failed to update artwork status' })
+        }
+        if (!data?.length) return res.status(404).json({ error: 'Artwork not found' })
+        return res.status(200).json({ success: true, data: data[0] })
+      }
+
+      // PUT /api/artworks/:id/etherscan — Adresse blockchain (admin uniquement)
+      if (req.method === 'PUT' && s1 && s1 !== 'verify' && s2 === 'etherscan') {
+        const admin = await getAuthUser()
+        if (!admin) return
+        if (admin.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+        const etherscan = typeof req.body?.etherscan === 'string' ? req.body.etherscan.trim() : ''
+        if (etherscan.length > 500 || (etherscan && !/^https:\/\/[^\s]+$/i.test(etherscan))) {
+          return res.status(400).json({ error: 'etherscan must be an https URL (500 characters max)' })
+        }
+        const { data, error } = await supabaseAdmin
+          .from('artworks')
+          .update({ etherscan: etherscan || null })
+          .eq('id', s1)
+          .select()
+        if (error) {
+          console.error('[PUT /api/artworks/:id/etherscan] Update error:', error.message)
+          return res.status(500).json({ error: 'Failed to update etherscan' })
+        }
+        if (!data?.length) return res.status(404).json({ error: 'Artwork not found' })
+        return res.status(200).json({ success: true, data: data[0] })
       }
 
       // PUT /api/artworks/:id — Update artwork
@@ -2818,6 +2870,20 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'destination_country is required' })
           }
 
+          // Les œuvres doivent exister et appartenir à l'utilisateur (sauf admin)
+          const uniqueIds = [...new Set(artwork_ids)]
+          const { data: owned, error: ownedError } = await supabaseAdmin
+            .from('artworks')
+            .select('id, user_id, owner_id')
+            .in('id', uniqueIds)
+          if (ownedError) return res.status(500).json({ error: ownedError.message })
+          const allowed = (owned || []).filter(
+            (a) => user.role === 'admin' || a.user_id === user.id || a.owner_id === user.id
+          )
+          if (allowed.length !== uniqueIds.length) {
+            return res.status(403).json({ error: 'Each artwork must exist and belong to you' })
+          }
+
           // Create delivery request
           const { data, error } = await supabaseAdmin
             .from('delivery_requests')
@@ -2836,6 +2902,16 @@ export default async function handler(req, res) {
             console.error('[Delivery Request Error]', error)
             return res.status(500).json({ error: error.message })
           }
+
+          const { error: linkError } = await supabaseAdmin
+            .from('delivery_artwork_ids')
+            .insert(uniqueIds.map((artwork_id) => ({ delivery_id: data.id, artwork_id })))
+          if (linkError) {
+            await supabaseAdmin.from('delivery_requests').delete().eq('id', data.id)
+            console.error('[Delivery Request] Link artworks failed:', linkError.message)
+            return res.status(500).json({ error: 'Failed to attach artworks to delivery request' })
+          }
+          await supabaseAdmin.from('delivery_events').insert({ delivery_id: data.id, status: 'pending', note: 'Demande créée' })
 
           // ✅ Notify admin of new delivery request (non-blocking)
           try {

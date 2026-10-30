@@ -31,7 +31,7 @@ export function createFakeDb(seed = {}) {
       this.max = null
       this.countMode = false
     }
-    select(cols) { if (this.op === 'select') this.op = 'select'; this.cols = cols; return this }
+    select(cols) { this.cols = cols; this.selected = true; return this }
     insert(p) { this.op = 'insert'; this.payload = p; return this }
     update(p) { this.op = 'update'; this.payload = p; return this }
     upsert(p) { this.op = 'upsert'; this.payload = p; return this }
@@ -108,8 +108,7 @@ export function createFakeDb(seed = {}) {
           : { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } }
       }
       if (this.mode === 'maybe') return { data: rows[0] ?? null, error: null }
-      const wantsRows = this.op === 'select' || this.cols !== undefined
-      return { data: wantsRows || this.op === 'select' ? rows : null, error: null, count }
+      return { data: this.op === 'select' || this.selected ? rows : null, error: null, count }
     }
   }
 
@@ -119,7 +118,8 @@ export function createFakeDb(seed = {}) {
     failTables: new Set(),
     addUser({ id = uuid(), email, role = 'buyer', name, token }) {
       const t = token || `token-${id}`
-      sessions[t] = { id, email: email || `${id}@test.local`, user_metadata: { role } }
+      // Comme Supabase Auth : `role` vaut toujours 'authenticated', le rôle métier est dans la table users
+      sessions[t] = { id, email: email || `${id}@test.local`, role: 'authenticated', user_metadata: {} }
       table('users').push({ id, email: sessions[t].email, role, name: name || email || id })
       return { id, token: t }
     },
