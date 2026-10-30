@@ -597,7 +597,7 @@ export default async function handler(req, res) {
           // Alias attendu par les écrans qui lisent `data` (ex. catalogue Pro, ancien standalone)
           data: artworksWithArtistNames,
           count: artworksWithArtistNames.length,
-          _debug: filterDiagnosis, // ✅ DEBUG INFO — remove in production
+          ...(process.env.NODE_ENV !== 'production' && process.env.VERCEL_ENV !== 'production' ? { _debug: filterDiagnosis } : {}),
         })
       }
 
@@ -1554,7 +1554,7 @@ export default async function handler(req, res) {
 
           const { data: currentUser, error: currentUserError } = await supabaseAdmin
             .from('users')
-            .select('id, role, name, country, auth_provider')
+            .select('id, role, name, country, auth_provider, onboarding_completed')
             .eq('id', auth.userId)
             .single()
 
@@ -2132,18 +2132,13 @@ export default async function handler(req, res) {
         await supabaseAdmin.from('transactions').update({ status: 'failed' }).eq('id', txRef)
         // Diagnostic : réponse PayDunya (code et message uniquement, jamais les clés)
         console.error('[PayDunya invoice]', invoice.response_code, invoice.response_text)
-        return res.status(502).json({
-          error: 'Paiement indisponible, réessayez plus tard',
-          paydunya: {
-            response_code: invoice.response_code ?? null,
-            response_text: invoice.response_text ?? null,
-            // Contrôle de configuration : mode utilisé et longueur des clés (jamais les valeurs)
-            mode: process.env.PAYDUNYA_MODE ?? null,
-            master_key_length: (process.env.PAYDUNYA_MASTER_KEY || '').length,
-            private_key_length: (process.env.PAYDUNYA_PRIVATE_KEY || '').length,
-            token_length: (process.env.PAYDUNYA_TOKEN || '').length,
-          },
+        console.error('[PayDunya config]', {
+          mode: process.env.PAYDUNYA_MODE ?? null,
+          master_key_length: (process.env.PAYDUNYA_MASTER_KEY || '').length,
+          private_key_length: (process.env.PAYDUNYA_PRIVATE_KEY || '').length,
+          token_length: (process.env.PAYDUNYA_TOKEN || '').length,
         })
+        return res.status(502).json({ error: 'Paiement indisponible, réessayez plus tard' })
       }
       await supabaseAdmin.from('transactions').update({ payment_ref: invoice.token }).eq('id', txRef)
 
@@ -2694,7 +2689,9 @@ export default async function handler(req, res) {
             user_id: artistData?.user_id,
           })
 
-          return res.status(200).json({ success: true, data: artistData })
+          const artistViewer = await checkAuth(req)
+          const seesPrivate = !artistViewer.error && (artistViewer.userId === s1 || artistViewer.role === 'admin')
+          return res.status(200).json({ success: true, data: seesPrivate ? artistData : toPublicArtist(artistData) })
         }
 
         // For non-artists (buyer, curator, advisor, admin), return users table
