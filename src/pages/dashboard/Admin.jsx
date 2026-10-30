@@ -42,7 +42,6 @@ import { AuctionTab } from '../../components/professional/AuctionTab'
 import { useNumerisation } from '../../store/NumerisationStore'
 import { NumerisationList } from '../../components/numerisation/NumeristionList'
 import ClientsTab from '../../components/admin/ClientsTab'
-import { CampainTab } from '../../components/admin/CampainTab'
 import GalleriesTab from '../../components/admin/GalleriesTab'
 import SupportTicketTab from '../../components/admin/SupportTicketTab'
 import LogidooDashboard from '../../components/admin/LogidooDashboard'
@@ -91,7 +90,6 @@ export default function Admin() {
       icon: <Mail className="w-4 h-4" />,
       items: [
         { name: td.items.blogPosts, icon: <FileText className="w-4 h-4" />, index: 8 },
-        { name: td.items.emailCampaigns, icon: <Mail className="w-4 h-4" />, index: 15 },
         { name: td.items.supportTickets, icon: <MessageSquare className="w-4 h-4" />, index: 10 },
       ],
     },
@@ -193,8 +191,6 @@ export default function Admin() {
         return <SubscriptionTab />
       case 14:
         return <LogsTab />
-      case 15:
-        return <CampainTab />
       case 16:
         return <GalleriesTab />
       case 17:
