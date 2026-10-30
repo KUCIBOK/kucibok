@@ -146,3 +146,52 @@ describe('Achat d’une œuvre', () => {
     expect(paydunya.invoices[res.body.data.token].body.invoice.total_amount).toBe(200000)
   })
 })
+
+describe('Ventes artiste, journal et support', () => {
+  it('"Mes ventes" : l’artiste voit ses ventes payées et en attente, pas celles des autres', async () => {
+    const other = db.addUser({ role: 'artist' })
+    const mk = async (token, title) => {
+      const w = (await call({ method: 'POST', url: '/api/artworks', token, body: { title, price: 100000, currency: 'XOF', for_sale: true } })).body.data
+      db.tables.artworks.find((a) => a.id === w.id).sold = false
+      await call({ method: 'PUT', url: `/api/artworks/${w.id}/approve`, token: admin.token, body: { status: 'approved' } })
+      return w.id
+    }
+    const mine = await mk(artist.token, 'À moi')
+    const theirs = await mk(other.token, 'À un autre')
+    const paid = (await call({ method: 'POST', url: '/api/payments/paydunya-init', token: buyer.token, body: { type: 'artwork', artwork_id: mine } })).body.data.token
+    await call({ method: 'POST', url: '/api/payments/paydunya-init', token: buyer.token, body: { type: 'artwork', artwork_id: theirs } })
+    paydunya.pay(paid)
+    await call({ method: 'POST', url: '/api/payments/ipn', body: { data: { invoice: { token: paid } } } })
+    expect(db.tables.transactions.find((t) => t.payment_ref === paid).seller_id).toBe(artist.id)
+
+    const res = await call({ url: '/api/transactions/artist', token: artist.token })
+    expect(res.statusCode).toBe(200)
+    expect(res.body.data.stats).toMatchObject({ currency: 'XOF', totalRevenue: 100000, completedSales: 1, pendingSales: 0, totalCommission: 0 })
+    expect(res.body.data.transactions).toHaveLength(1)
+    expect(res.body.data.transactions[0].artworks.title).toBe('À moi')
+    expect((await call({ url: '/api/transactions/artist', token: buyer.token })).statusCode).toBe(403)
+    expect((await call({ url: '/api/transactions/artist' })).statusCode).toBe(401)
+  })
+
+  it('journal d’audit : écriture avec l’identité du jeton, lecture réservée à l’admin', async () => {
+    await call({ method: 'POST', url: '/api/log', token: admin.token, body: { description: 'Approbation de l’œuvre X', userId: artist.id } })
+    await call({ method: 'POST', url: '/api/log', body: { description: 'anonyme : ignoré' } })
+    const rows = (await call({ url: '/api/log', token: admin.token })).body
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ user_id: admin.id, description: 'Approbation de l’œuvre X' })
+    expect((await call({ url: '/api/log', token: artist.token })).statusCode).toBe(403)
+  })
+
+  it('report-error : accepté sans connexion, message obligatoire', async () => {
+    expect((await call({ method: 'POST', url: '/api/report-error', body: { error_message: 'boom', error_type: 'react' } })).statusCode).toBe(202)
+    expect((await call({ method: 'POST', url: '/api/report-error', body: {} })).statusCode).toBe(400)
+  })
+
+  it('tickets support : création par l’utilisateur, liste complète réservée à l’admin', async () => {
+    expect((await call({ method: 'POST', url: '/api/support-tickets/create', token: artist.token, body: { subject: 'Aide', description: 'Je ne vois pas mes ventes' } })).statusCode).toBe(201)
+    const all = await call({ url: '/api/support-tickets/admin/all', token: admin.token })
+    expect(all.body).toMatchObject({ success: true, count: 1 })
+    expect((await call({ url: '/api/support-tickets/admin/all', token: artist.token })).statusCode).toBe(403)
+  })
+})
+

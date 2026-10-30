@@ -62,3 +62,4 @@ scripts/.env.migration.txt
 scripts/migration_id_map.json
 scripts/user_id_map.json
 scripts/yarn.lock
+.e2e-dist/

@@ -26,7 +26,7 @@ export async function getAllLog() {
   try {
     const response = await fetch(`${api}/log`, { ...utils.options })
     const logs = await response.json()
-    if (logs.length > 0) {
+    if (Array.isArray(logs)) {
       return logs
     }
     return {

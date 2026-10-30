@@ -19,12 +19,10 @@ import {
 } from 'lucide-react'
 import { useDelivery } from '../../store/DeliveryStore'
 import { useLogistics } from '../../hooks/useLogistics'
-import { useDeliveryRequest } from '../../api/useNotifications'
 import { CustomsSimulator } from './CustomsSimulator'
 
 export function DeliveryTab() {
   const { myDeliveries } = useDelivery()
-  const { submit: submitDeliveryRequest } = useDeliveryRequest()
   const {
     getDeliveryZones,
     getPickupPoints,
@@ -148,27 +146,14 @@ export function DeliveryTab() {
         collectionDate: formData.collectDate,
         deliveryDate: formData.deliveryDate,
         specialInstructions: formData.specialInstructions,
+        artwork_ids: formData.artworksIds,
+        zone: formData.selectedZone,
       }
 
       const result = await createExpedition(expeditionData)
 
-      if (result.expedition || result.mock) {
-        setFormSuccess(
-          `Expedition créée! ${result.expedition?.trackingNumber ? 'Tracking: ' + result.expedition.trackingNumber : '(Données de test)'}`
-        )
-
-        // ✅ Notify admin of new delivery request
-        try {
-          await submitDeliveryRequest(
-            formData.artworksIds,
-            formData.selectedZone || 'Non spécifiée',
-            formData.deliveryPriority,
-            formData.specialInstructions
-          )
-        } catch (notifErr) {
-          // Non-blocking: delivery created but notification failed
-          console.warn('Delivery notification failed:', notifErr)
-        }
+      if (result.expedition) {
+        setFormSuccess(`Expédition créée ! Tracking : ${result.expedition.trackingNumber}`)
 
         setFormData({
           artworksIds: [],
