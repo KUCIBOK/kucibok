@@ -1,102 +1,69 @@
 /**
- * src/api/useArtworkMutationsQuery.js - React Query mutations for artwork actions
- * Replaces ArtworkContext mutation functions
+ * src/api/useArtworkMutationsQuery.js - Actions d'écriture sur les œuvres
+ *
+ * Les composants appellent ces actions comme des fonctions async et lisent le résultat :
+ *   const updated = await approveArtwork(id, 'approved')   // { id, ... } ou { error }
+ * Chaque action invalide le cache React Query ['artworks'] quand elle réussit.
  */
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { utils } from './useAPI'
+import { submitArtwork as submitArtworkRequest, updateArtwork as updateArtworkRequest } from './useArtworks'
 
-// API call functions
-async function approveArtworkAPI(id, status) {
-  const res = await fetch(`${utils.api}/artworks/${id}/approve`, {
-    method: 'PUT',
-    ...utils.options,
-    body: JSON.stringify({ status }),
-  })
-  if (!res.ok) throw new Error('Failed to approve artwork')
-  return res.json()
+/** PUT /api/artworks/:id/approve — modération admin (approved | rejected | pending). */
+async function moderateArtworkRequest(id, status) {
+  try {
+    const res = await fetch(`${utils.api}/artworks/${id}/approve`, {
+      ...utils.options,
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    })
+    const body = await res.json().catch(() => null)
+    if (!res.ok) return { error: body?.error || `Erreur serveur (HTTP ${res.status})` }
+    return body?.data ?? body
+  } catch (err) {
+    return { error: err.message }
+  }
 }
 
-async function submitArtworkAPI(artwork) {
-  const res = await fetch(`${utils.api}/artworks`, {
-    method: 'POST',
-    ...utils.options,
-    body: JSON.stringify(artwork),
-  })
-  if (!res.ok) throw new Error('Failed to submit artwork')
-  return res.json()
-}
-
-async function updateArtworkAPI(id, payload) {
-  const res = await fetch(`${utils.api}/artworks/${id}`, {
-    method: 'PUT',
-    ...utils.options,
-    body: JSON.stringify(payload),
-  })
-  if (!res.ok) throw new Error('Failed to update artwork')
-  return res.json()
-}
-
-async function modifyEtherscanAPI(id, etherscan) {
-  const res = await fetch(`${utils.api}/artworks/${id}/etherscan`, {
-    method: 'PUT',
-    ...utils.options,
-    body: JSON.stringify({ etherscan }),
-  })
-  if (!res.ok) throw new Error('Failed to update etherscan')
-  return res.json()
+/** PUT /api/artworks/:id/etherscan — adresse blockchain (admin). */
+async function modifyEtherscanRequest(id, etherscan) {
+  try {
+    const res = await fetch(`${utils.api}/artworks/${id}/etherscan`, {
+      ...utils.options,
+      method: 'PUT',
+      body: JSON.stringify({ etherscan }),
+    })
+    const body = await res.json().catch(() => null)
+    if (!res.ok) return { error: body?.error || `Erreur serveur (HTTP ${res.status})` }
+    return body?.data ?? body
+  } catch (err) {
+    return { error: err.message }
+  }
 }
 
 /**
- * Hook: Get all artwork mutations
- * ✅ useMutation for each action
- * ✅ Auto-invalidates cache on success
- * ✅ Returns error state for UI feedback
+ * Hook : actions d'écriture sur les œuvres.
  *
- * Usage:
+ * Usage :
  *   const { approveArtwork, submitArtwork, updateArtwork, modifyEtherscan } = useArtworkMutations()
- *
- *   // Then call them:
- *   approveArtwork.mutate({ id, status })
- *   // Or:
- *   const data = await approveArtwork.mutateAsync({ id, status })
  */
 export function useArtworkMutations() {
   const queryClient = useQueryClient()
 
-  const approveArtwork = useMutation({
-    mutationFn: ({ id, status }) => approveArtworkAPI(id, status),
-    onSuccess: () => {
-      // Invalidate artwork queries so they refetch
-      queryClient.invalidateQueries({ queryKey: ['artworks'] })
-    },
-  })
-
-  const submitArtwork = useMutation({
-    mutationFn: (artwork) => submitArtworkAPI(artwork),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['artworks'] })
-    },
-  })
-
-  const updateArtwork = useMutation({
-    mutationFn: ({ id, payload }) => updateArtworkAPI(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['artworks'] })
-    },
-  })
-
-  const modifyEtherscan = useMutation({
-    mutationFn: ({ id, etherscan }) => modifyEtherscanAPI(id, etherscan),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['artworks'] })
-    },
-  })
+  // Exécute l'action et rafraîchit les listes uniquement si elle a réussi
+  const withRefresh =
+    (action) =>
+    async (...args) => {
+      const result = await action(...args)
+      if (!result?.error) queryClient.invalidateQueries({ queryKey: ['artworks'] })
+      return result
+    }
 
   return {
-    approveArtwork,
-    submitArtwork,
-    updateArtwork,
-    modifyEtherscan,
+    approveArtwork: withRefresh(moderateArtworkRequest),
+    submitArtwork: withRefresh(submitArtworkRequest),
+    updateArtwork: withRefresh(updateArtworkRequest),
+    modifyEtherscan: withRefresh(modifyEtherscanRequest),
   }
 }

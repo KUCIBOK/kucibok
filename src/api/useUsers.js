@@ -87,7 +87,7 @@ export async function deleteUser(id) {
 
 export async function setUserStatus(id) {
   try {
-    const response = await fetch(`${api}/auth/status/${id}`, { ...utils.options })
+    const response = await fetch(`${api}/auth/status/${id}`, { ...utils.options, method: 'POST' })
     const body = await response.json()
     const user = body?.data ?? body
     if (user?.id || user?._id) {

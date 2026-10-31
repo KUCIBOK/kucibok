@@ -8,6 +8,7 @@ import { respondJSON, respondError, checkAuth } from './_lib/response.js'
 import { requireAuth } from './_lib/auth.js'
 import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
+import { handleExtraRoutes, createNotifier } from './_modules/extra-routes.js'
 import DOMPurify from 'dompurify'
 import PDFDocument from 'pdfkit'
 
@@ -223,6 +224,84 @@ export default async function handler(req, res) {
     const s1 = path[1] // Second segment
     const s2 = path[2] // Third segment
 
+    // Les endpoints artistes sont publics : jamais de ventes ni de gains
+    const toPublicArtist = (artist) => {
+      if (!artist) return artist
+      const { total_sales: _sales, total_earnings: _earnings, ...publicArtist } = artist
+      return publicArtist
+    }
+
+    const notify = createNotifier(supabaseAdmin)
+
+    // ─── Logistique : suivi, expéditions ─────────────────────────────────────
+    const newTrackingId = () => `KCB-TRK-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`
+    // Forme attendue par le front (id et _id, trackingId en camelCase)
+    const toDeliveryClient = (row) => ({ ...row, _id: row.id, trackingId: row.tracking_id })
+    // Suivi public : uniquement statut et événements, jamais les coordonnées du destinataire
+    const lookupTracking = async (trackingId) => {
+      const { data: delivery, error } = await supabaseAdmin
+        .from('delivery_requests')
+        .select('id, tracking_id, status, corridor, delivery_date, collect_date, created_at')
+        .eq('tracking_id', String(trackingId).toUpperCase())
+        .maybeSingle()
+      if (error) throw error
+      if (!delivery) return null
+      const { data: events } = await supabaseAdmin
+        .from('delivery_events')
+        .select('status, note, date')
+        .eq('delivery_id', delivery.id)
+        .order('date', { ascending: true })
+      return {
+        trackingId: delivery.tracking_id,
+        status: delivery.status,
+        corridor: delivery.corridor,
+        collectDate: delivery.collect_date,
+        deliveryDate: delivery.delivery_date,
+        createdAt: delivery.created_at,
+        events: events || [],
+      }
+    }
+    // Crée une expédition (demande de livraison suivie) ; œuvres facultatives mais contrôlées
+    const createExpedition = async (user, payload) => {
+      const { recipient = {}, package: pkg = {}, serviceType, collectionDate, deliveryDate, specialInstructions, artwork_ids, zone } = payload || {}
+      if (!recipient.name || !recipient.phone) return { status: 400, error: 'recipient.name and recipient.phone are required' }
+      const ids = [...new Set(Array.isArray(artwork_ids) ? artwork_ids : [])]
+      if (ids.length) {
+        const { data: owned, error: ownedError } = await supabaseAdmin.from('artworks').select('id, user_id, owner_id').in('id', ids)
+        if (ownedError) return { status: 500, error: ownedError.message }
+        const allowed = (owned || []).filter((a) => user.role === 'admin' || a.user_id === user.id || a.owner_id === user.id)
+        if (allowed.length !== ids.length) return { status: 403, error: 'Each artwork must exist and belong to you' }
+      }
+      const { data, error } = await supabaseAdmin
+        .from('delivery_requests')
+        .insert({
+          user_id: user.id,
+          tracking_id: newTrackingId(),
+          status: 'pending',
+          recipient_name: recipient.name,
+          recipient_phone: recipient.phone,
+          delivery_address: recipient.address || null,
+          package_weight: Number.isFinite(Number(pkg.weight)) ? Number(pkg.weight) : null,
+          package_size: pkg.size || null,
+          delivery_priority: String(serviceType || 'standard').toLowerCase(),
+          collect_date: collectionDate || null,
+          delivery_date: deliveryDate || null,
+          special_instructions: specialInstructions || zone || null,
+        })
+        .select()
+        .single()
+      if (error) return { status: 500, error: error.message }
+      if (ids.length) {
+        const { error: linkError } = await supabaseAdmin.from('delivery_artwork_ids').insert(ids.map((artwork_id) => ({ delivery_id: data.id, artwork_id })))
+        if (linkError) {
+          await supabaseAdmin.from('delivery_requests').delete().eq('id', data.id)
+          return { status: 500, error: 'Failed to attach artworks to delivery request' }
+        }
+      }
+      await supabaseAdmin.from('delivery_events').insert({ delivery_id: data.id, status: 'pending', note: 'Expédition créée' })
+      return { status: 201, expedition: { ...toDeliveryClient(data), trackingNumber: data.tracking_id } }
+    }
+
     // ─── Essai et lecture seule (curateur et conseiller uniquement) ──────────
     // Essai de 14 jours créé automatiquement. Après l'essai, sans abonnement actif,
     // le compte reste en lecture seule : les écritures sont refusées.
@@ -249,7 +328,7 @@ export default async function handler(req, res) {
       const { data: subs } = await supabaseAdmin.from('subscriptions').select('status, end_date').eq('user_id', userId)
       const now = Date.now()
       return (subs || []).some(
-        (s) => ['active', 'trial'].includes(s.status) && (!s.end_date || Date.parse(s.end_date) > now)
+        (s) => ['active', 'trial', 'cancelled'].includes(s.status) && (!s.end_date || Date.parse(s.end_date) > now)
       )
     }
     // Écritures interdites en lecture seule, sauf authentification, abonnement, paiement et profil
@@ -296,7 +375,7 @@ export default async function handler(req, res) {
     // ✅ Helper function: Sanitize HTML to prevent XSS
     // DOMPurify n'a pas de DOM en Node (sanitize indéfini) : filtre à liste blanche sans dépendance.
     // Tags autorisés sans attributs, sauf <a> qui ne garde qu'un href http(s).
-    const SAFE_TAGS = new Set(['b', 'i', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h2', 'h3'])
+    const SAFE_TAGS = new Set(['b', 'i', 'u', 's', 'em', 'strong', 'p', 'br', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'code', 'pre'])
     const sanitizeHtml = (html) => {
       if (!html || typeof html !== 'string') return ''
       return html
@@ -335,10 +414,12 @@ export default async function handler(req, res) {
     }
 
     // ✅ Helper function: Get authenticated user
+    // Renvoie l'utilisateur avec son rôle métier (table users). Le `role` de l'objet Supabase Auth
+    // vaut toujours 'authenticated' : s'y fier rendait inopérants tous les contrôles artist/curator/advisor/admin.
     const getAuthUser = async () => {
-      const auth = await requireAuth(req)
+      const auth = await checkAuth(req)
       if (auth.error) {
-        res.status(auth.status).json({ error: auth.error })
+        res.status(auth.status || 401).json({ error: auth.error })
         return null // EARLY RETURN — prevents further execution
       }
       return auth.user || null
@@ -519,7 +600,7 @@ export default async function handler(req, res) {
           // Alias attendu par les écrans qui lisent `data` (ex. catalogue Pro, ancien standalone)
           data: artworksWithArtistNames,
           count: artworksWithArtistNames.length,
-          _debug: filterDiagnosis, // ✅ DEBUG INFO — remove in production
+          ...(process.env.NODE_ENV !== 'production' && process.env.VERCEL_ENV !== 'production' ? { _debug: filterDiagnosis } : {}),
         })
       }
 
@@ -684,6 +765,68 @@ export default async function handler(req, res) {
           success: true,
           data: data[0],
         })
+      }
+
+      // PUT /api/artworks/:id/approve — Modération (admin uniquement)
+      // Seule la modération admin pose approved / rejected ; le propriétaire ne le peut pas.
+      if (req.method === 'PUT' && s1 && s1 !== 'verify' && s2 === 'approve') {
+        const admin = await getAuthUser()
+        if (!admin) return
+        if (admin.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+        const MODERATION_STATUSES = ['approved', 'rejected', 'pending']
+        const nextStatus = req.body?.status
+        if (!MODERATION_STATUSES.includes(nextStatus)) {
+          return res.status(400).json({ error: `Invalid status. Must be one of: ${MODERATION_STATUSES.join(', ')}` })
+        }
+        const { data, error } = await supabaseAdmin
+          .from('artworks')
+          .update({ status: nextStatus })
+          .eq('id', s1)
+          .select()
+        if (error) {
+          console.error('[PUT /api/artworks/:id/approve] Update error:', error.message)
+          return res.status(500).json({ error: 'Failed to update artwork status' })
+        }
+        if (!data?.length) return res.status(404).json({ error: 'Artwork not found' })
+        if (nextStatus !== 'pending' && data[0].user_id) {
+          const approved = nextStatus === 'approved'
+          await notify(data[0].user_id, {
+            type: 'artwork',
+            severity: approved ? 'success' : 'warning',
+            title: approved ? 'Œuvre approuvée' : 'Œuvre rejetée',
+            message: approved
+              ? `« ${data[0].title || 'Votre œuvre'} » est maintenant visible sur la plateforme.`
+              : `« ${data[0].title || 'Votre œuvre'} » n'a pas été retenue. Contactez le support pour en savoir plus.`,
+            metadata: { artwork_id: data[0].id, status: nextStatus },
+          })
+        }
+        return res.status(200).json({ success: true, data: data[0] })
+      }
+
+      // PUT /api/artworks/:id/etherscan — Adresse blockchain (admin uniquement)
+      if (req.method === 'PUT' && s1 && s1 !== 'verify' && s2 === 'etherscan') {
+        const admin = await getAuthUser()
+        if (!admin) return
+        if (admin.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin access required' })
+        }
+        const etherscan = typeof req.body?.etherscan === 'string' ? req.body.etherscan.trim() : ''
+        if (etherscan.length > 500 || (etherscan && !/^https:\/\/[^\s]+$/i.test(etherscan))) {
+          return res.status(400).json({ error: 'etherscan must be an https URL (500 characters max)' })
+        }
+        const { data, error } = await supabaseAdmin
+          .from('artworks')
+          .update({ etherscan: etherscan || null })
+          .eq('id', s1)
+          .select()
+        if (error) {
+          console.error('[PUT /api/artworks/:id/etherscan] Update error:', error.message)
+          return res.status(500).json({ error: 'Failed to update etherscan' })
+        }
+        if (!data?.length) return res.status(404).json({ error: 'Artwork not found' })
+        return res.status(200).json({ success: true, data: data[0] })
       }
 
       // PUT /api/artworks/:id — Update artwork
@@ -1147,7 +1290,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
           success: true,
-          artists: data || [],
+          artists: (data || []).map(toPublicArtist),
           count: (data || []).length,
         })
       }
@@ -1166,7 +1309,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
           success: true,
-          data,
+          data: toPublicArtist(data),
         })
       }
 
@@ -1426,7 +1569,7 @@ export default async function handler(req, res) {
 
           const { data: currentUser, error: currentUserError } = await supabaseAdmin
             .from('users')
-            .select('id, role, name, country, auth_provider')
+            .select('id, role, name, country, auth_provider, onboarding_completed')
             .eq('id', auth.userId)
             .single()
 
@@ -1934,6 +2077,15 @@ export default async function handler(req, res) {
       }
 
       await supabaseAdmin.from('transactions').update({ status: 'completed' }).eq('id', tx.id)
+      if (tx.artwork_id && tx.seller_id) {
+        await notify(tx.seller_id, {
+          type: 'sale',
+          severity: 'success',
+          title: 'Œuvre vendue',
+          message: `Une de vos œuvres a été vendue pour ${Number(tx.amount).toLocaleString('fr-FR')} XOF.`,
+          metadata: { artwork_id: tx.artwork_id, transaction_id: tx.id },
+        })
+      }
       return 'OK'
     }
 
@@ -1950,7 +2102,7 @@ export default async function handler(req, res) {
 
       const { data: artwork } = await supabaseAdmin
         .from('artworks')
-        .select('id, title, price, currency, status, for_sale, sold')
+        .select('id, title, price, currency, status, for_sale, sold, user_id')
         .eq('id', artwork_id)
         .maybeSingle()
       if (!artwork || artwork.status !== 'approved' || !artwork.for_sale || artwork.sold) {
@@ -1970,6 +2122,7 @@ export default async function handler(req, res) {
         payment_ref: `pending-${txRef}`,
         buyer_id: buyerId,
         artwork_id: artwork.id,
+        seller_id: artwork.user_id,
         amount,
         currency: 'XOF',
         payment_method: 'paydunya',
@@ -2003,18 +2156,13 @@ export default async function handler(req, res) {
         await supabaseAdmin.from('transactions').update({ status: 'failed' }).eq('id', txRef)
         // Diagnostic : réponse PayDunya (code et message uniquement, jamais les clés)
         console.error('[PayDunya invoice]', invoice.response_code, invoice.response_text)
-        return res.status(502).json({
-          error: 'Paiement indisponible, réessayez plus tard',
-          paydunya: {
-            response_code: invoice.response_code ?? null,
-            response_text: invoice.response_text ?? null,
-            // Contrôle de configuration : mode utilisé et longueur des clés (jamais les valeurs)
-            mode: process.env.PAYDUNYA_MODE ?? null,
-            master_key_length: (process.env.PAYDUNYA_MASTER_KEY || '').length,
-            private_key_length: (process.env.PAYDUNYA_PRIVATE_KEY || '').length,
-            token_length: (process.env.PAYDUNYA_TOKEN || '').length,
-          },
+        console.error('[PayDunya config]', {
+          mode: process.env.PAYDUNYA_MODE ?? null,
+          master_key_length: (process.env.PAYDUNYA_MASTER_KEY || '').length,
+          private_key_length: (process.env.PAYDUNYA_PRIVATE_KEY || '').length,
+          token_length: (process.env.PAYDUNYA_TOKEN || '').length,
         })
+        return res.status(502).json({ error: 'Paiement indisponible, réessayez plus tard' })
       }
       await supabaseAdmin.from('transactions').update({ payment_ref: invoice.token }).eq('id', txRef)
 
@@ -2038,7 +2186,7 @@ export default async function handler(req, res) {
 
       const { data: tx } = await supabaseAdmin
         .from('transactions')
-        .select("id, buyer_id, status, artwork_id, amount")
+        .select("id, buyer_id, seller_id, status, artwork_id, amount")
         .eq("payment_ref", token)
         .maybeSingle()
       if (!tx) return res.status(404).send('unknown transaction')
@@ -2053,7 +2201,7 @@ export default async function handler(req, res) {
 
       const { data: tx } = await supabaseAdmin
         .from('transactions')
-        .select("id, buyer_id, status, artwork_id, amount, payment_ref")
+        .select("id, buyer_id, seller_id, status, artwork_id, amount, payment_ref")
         .eq(isUuid ? "id" : "payment_ref", ref)
         .maybeSingle()
       if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
@@ -2182,43 +2330,46 @@ export default async function handler(req, res) {
           })
         }
 
-              const { artwork_id } = req.body || {}
-              if (!artwork_id) return res.status(400).json({ error: 'artwork_id requis' })
+        const { data, error } = await supabaseAdmin
+          .from('subscriptions')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .in('status', ['active', 'trial'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
 
-              const { data: artwork, error: artworkError } = await supabaseAdmin
-                .from('artworks').select('*').eq('id', artwork_id).single()
-              if (artworkError || !artwork) return res.status(404).json({ error: 'Œuvre introuvable' })
-              if (artwork.status !== 'approved') return res.status(400).json({ error: 'L’œuvre doit être approuvée' })
+        if (error && error.code !== 'PGRST116') {
+          // PGRST116 = no rows found
+          console.error('[GET /api/subscriptions/active] Query error:', error.message)
+          return res.status(500).json({ error: 'Subscription query failed' })
+        }
 
-              const isAdmin = user.role === 'admin'
-              let isOwner = artwork.user_id === user.id
-              if (!isOwner && artwork.artist_id) {
-                const { data: ownerArtist } = await supabaseAdmin.from('artists').select('user_id').eq('id', artwork.artist_id).maybeSingle()
-                isOwner = ownerArtist?.user_id === user.id
-              }
-              if (!isAdmin && !isOwner) return res.status(403).json({ error: 'Accès refusé' })
+        return res.status(200).json({
+          success: true,
+          data: data || null,
+        })
+      }
+    }
 
-              const { data: artist } = artwork.artist_id
-                ? await supabaseAdmin.from('artists').select('name').eq('id', artwork.artist_id).maybeSingle()
-                : { data: null }
-              const artistName = artist?.name || user.user_metadata?.name || 'Artiste Kucibok'
-              const kcbNumber = artwork.kucibok_id || `KCB-${Math.random().toString(36).slice(2, 10).toUpperCase()}`
-              const pdf = await createPdfBuffer((doc) => {
-                doc.fillColor('#B08D57').fontSize(24).text('CERTIFICAT KUCIBOK', { align: 'center' })
-                doc.moveDown(0.5).fillColor('#222').fontSize(12).text('Certificat d’authenticité et de provenance', { align: 'center' })
-                doc.moveDown(2).fontSize(16).text(artwork.title, { align: 'center' })
-                doc.moveDown().fontSize(11).text(`Artiste : ${artistName}`)
-                doc.text(`Identifiant KCB : ${kcbNumber}`)
-                doc.text(`Support : ${artwork.medium || 'Non renseigné'}`)
-                doc.text(`Dimensions : ${artwork.height || '—'} × ${artwork.width || '—'}`)
-                doc.text(`Émis le : ${new Date().toLocaleDateString('fr-FR')}`)
-                doc.moveDown(2).fontSize(10).fillColor('#555').text('Ce document certifie l’enregistrement de l’œuvre dans le Standard Kucibok. Vérification publique disponible sur kucibok.com.', { align: 'justify' })
-              })
-              const path = `certificates/${artwork_id}-${kcbNumber}.pdf`
-              const { error: uploadError } = await supabaseAdmin.storage.from('certificates').upload(path, pdf, { contentType: 'application/pdf', upsert: true })
-              if (uploadError) return res.status(500).json({ error: uploadError.message })
-              const { data, error } = await supabaseAdmin.from('artworks').update({ kucibok_id: kcbNumber, certificate_path: path }).eq('id', artwork_id).select().single()
-              if (error) return res.status(500).json({ error: error.message })
+    // ─────────────────────────────────────────────────────────────
+    // SHORTLIST ROUTES
+    // ─────────────────────────────────────────────────────────────
+
+    if (s0 === 'shortlist') {
+      // POST /api/shortlist/:artworkId — Add to shortlist
+      if (req.method === 'POST' && s1) {
+        // ✅ CRITICAL: Require authentication
+        const user = await getAuthUser()
+        if (!user) return
+
+        // ✅ CRITICAL: Use authenticated user_id, NOT from body
+        const user_id = user.id
+        const artworkId = s1
+
+        if (!user_id || !artworkId) {
+          return res.status(400).json({ error: 'Missing artworkId' })
+        }
 
         try {
           const { data, error } = await supabaseAdmin
@@ -2412,13 +2563,6 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     // PLANS ROUTE
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'plan' && req.method === 'GET' && !s1) {
-      const mockPlans = [
-        { id: 1, name: 'Starter', price: 27, features: ['Feature 1', 'Feature 2'], trial_days: 14 },
-        { id: 2, name: 'Professional', price: 57, features: ['All Starter', 'Feature 3', 'Feature 4'], trial_days: 14 },
-      ]
-      return res.status(200).json({ success: true, data: mockPlans })
-    }
 
     // ─────────────────────────────────────────────────────────────
     // ARTIST ROUTES
@@ -2432,7 +2576,7 @@ export default async function handler(req, res) {
         if (error) {
           return res.status(200).json({ success: true, data: [], count: 0 })
         }
-        return res.status(200).json({ success: true, data: data || [], count: (data || []).length })
+        return res.status(200).json({ success: true, data: (data || []).map(toPublicArtist), count: (data || []).length })
       } catch (err) {
         return res.status(200).json({ success: true, data: [], count: 0 })
       }
@@ -2441,22 +2585,10 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     // CATEGORY ROUTES
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'category' && req.method === 'GET' && !s1) {
-      const mockCategories = [
-        { id: 1, name: 'Painting', slug: 'painting' },
-        { id: 2, name: 'Sculpture', slug: 'sculpture' },
-        { id: 3, name: 'Photography', slug: 'photography' },
-        { id: 4, name: 'Mixed Media', slug: 'mixed-media' },
-      ]
-      return res.status(200).json({ success: true, data: mockCategories })
-    }
 
     // ─────────────────────────────────────────────────────────────
     // BLOG ROUTES
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'blog' && (s1 === 'published' || s1 === 'archived') && req.method === 'GET') {
-      return res.status(200).json({ success: true, data: [], count: 0 })
-    }
 
     // ─────────────────────────────────────────────────────────────
     // VISITOR ROUTE (tracking)
@@ -2477,8 +2609,24 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     // DELIVERY ROUTE
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'delivery' && req.method === 'GET' && !s1) {
-      return res.status(200).json({ success: true, data: [] })
+    // GET /api/delivery (admin : toutes) et /api/delivery/my (les siennes) ; /api/delivery/track/:tid public
+    if (s0 === 'delivery' && req.method === 'GET' && s1 === 'track' && s2) {
+      try {
+        const tracking = await lookupTracking(s2)
+        if (!tracking) return res.status(404).json({ error: 'Tracking number not found' })
+        return res.status(200).json({ success: true, data: tracking })
+      } catch (err) {
+        return res.status(500).json({ error: err.message })
+      }
+    }
+    if (s0 === 'delivery' && req.method === 'GET' && (!s1 || s1 === 'my')) {
+      const caller = await checkAuth(req)
+      if (caller.error) return res.status(caller.status || 401).json({ error: caller.error })
+      let query = supabaseAdmin.from('delivery_requests').select('*').order('created_at', { ascending: false }).limit(200)
+      if (caller.role !== 'admin' || s1 === 'my') query = query.eq('user_id', caller.userId)
+      const { data, error } = await query
+      if (error) return res.status(500).json({ error: error.message })
+      return res.status(200).json({ success: true, data: (data || []).map(toDeliveryClient) })
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -2549,7 +2697,9 @@ export default async function handler(req, res) {
             user_id: artistData?.user_id,
           })
 
-          return res.status(200).json({ success: true, data: artistData })
+          const artistViewer = await checkAuth(req)
+          const seesPrivate = !artistViewer.error && (artistViewer.userId === s1 || artistViewer.role === 'admin')
+          return res.status(200).json({ success: true, data: seesPrivate ? artistData : toPublicArtist(artistData) })
         }
 
         // For non-artists (buyer, curator, advisor, admin), return users table
@@ -2811,6 +2961,20 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'destination_country is required' })
           }
 
+          // Les œuvres doivent exister et appartenir à l'utilisateur (sauf admin)
+          const uniqueIds = [...new Set(artwork_ids)]
+          const { data: owned, error: ownedError } = await supabaseAdmin
+            .from('artworks')
+            .select('id, user_id, owner_id')
+            .in('id', uniqueIds)
+          if (ownedError) return res.status(500).json({ error: ownedError.message })
+          const allowed = (owned || []).filter(
+            (a) => user.role === 'admin' || a.user_id === user.id || a.owner_id === user.id
+          )
+          if (allowed.length !== uniqueIds.length) {
+            return res.status(403).json({ error: 'Each artwork must exist and belong to you' })
+          }
+
           // Create delivery request
           const { data, error } = await supabaseAdmin
             .from('delivery_requests')
@@ -2829,6 +2993,16 @@ export default async function handler(req, res) {
             console.error('[Delivery Request Error]', error)
             return res.status(500).json({ error: error.message })
           }
+
+          const { error: linkError } = await supabaseAdmin
+            .from('delivery_artwork_ids')
+            .insert(uniqueIds.map((artwork_id) => ({ delivery_id: data.id, artwork_id })))
+          if (linkError) {
+            await supabaseAdmin.from('delivery_requests').delete().eq('id', data.id)
+            console.error('[Delivery Request] Link artworks failed:', linkError.message)
+            return res.status(500).json({ error: 'Failed to attach artworks to delivery request' })
+          }
+          await supabaseAdmin.from('delivery_events').insert({ delivery_id: data.id, status: 'pending', note: 'Demande créée' })
 
           // ✅ Notify admin of new delivery request (non-blocking)
           try {
@@ -3349,10 +3523,6 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     // NUMERISATION ROUTE
     // ─────────────────────────────────────────────────────────────
-    if (s0 === 'numerisation' && (s1 === 'my' || req.method === 'GET')) {
-      return res.status(200).json({ success: true, data: [] })
-    }
-
     // ─────────────────────────────────────────────────────────────
     // CLIENTS ROUTES (CRM for artists & advisors)
     // ─────────────────────────────────────────────────────────────
@@ -3518,7 +3688,17 @@ export default async function handler(req, res) {
     // ─────────────────────────────────────────────────────────────
     if (s0 === 'log' && req.method === 'POST') {
       try {
-        const { level = 'info', message, data, page_url } = req.body
+        const { level = 'info', message, description, data, page_url } = req.body
+
+        // Journal d'audit : persisté seulement pour un utilisateur authentifié (identité tirée du jeton)
+        const logAuth = await checkAuth(req)
+        if (!logAuth.error && (description || message)) {
+          await supabaseAdmin.from('logs').insert({
+            user_id: logAuth.userId,
+            description: String(description || message).slice(0, 500),
+            action: String(level).slice(0, 30),
+          })
+        }
 
         // Frontend logging endpoint (non-critical)
         console.log(`[Frontend Log] ${level.toUpperCase()}: ${message}`, {
@@ -3747,6 +3927,283 @@ export default async function handler(req, res) {
       }
     }
 
+    // GET /api/transactions/artist — ventes de l'artiste connecté (ses œuvres)
+    if (s0 === 'transactions' && s1 === 'artist' && req.method === 'GET') {
+      const seller = await checkAuth(req)
+      if (seller.error) return res.status(seller.status || 401).json({ error: seller.error })
+      if (!['artist', 'admin'].includes(seller.role)) return res.status(403).json({ error: 'Artist access required' })
+
+      const { data: works, error: worksError } = await supabaseAdmin
+        .from('artworks').select('id, title, image').eq('user_id', seller.userId)
+      if (worksError) return res.status(500).json({ error: worksError.message })
+      const byId = Object.fromEntries((works || []).map((w) => [w.id, w]))
+      const ids = Object.keys(byId)
+      const { data: txs, error: txError } = ids.length
+        ? await supabaseAdmin.from('transactions').select('id, artwork_id, amount, currency, status, created_at').in('artwork_id', ids).order('created_at', { ascending: false })
+        : { data: [], error: null }
+      if (txError) return res.status(500).json({ error: txError.message })
+
+      // Taux de commission : non défini par défaut (PRD : 5-10 %, à arrêter), configurable via COMMISSION_RATE
+      const rate = Math.min(Math.max(Number(process.env.COMMISSION_RATE) || 0, 0), 1)
+      const sum = (list) => list.reduce((acc, t) => acc + Number(t.amount || 0), 0)
+      const completed = (txs || []).filter((t) => t.status === 'completed')
+      const pending = (txs || []).filter((t) => ['pending', 'processing'].includes(t.status))
+      return res.status(200).json({
+        success: true,
+        data: {
+          stats: {
+            currency: 'XOF',
+            totalRevenue: sum(completed),
+            pendingRevenue: sum(pending),
+            totalCommission: Math.round(sum(completed) * rate),
+            completedSales: completed.length,
+            pendingSales: pending.length,
+          },
+          transactions: (txs || []).map((t) => ({ ...t, artworks: byId[t.artwork_id] || null })),
+        },
+      })
+    }
+
+    // POST /api/report-error — rapport d'erreur front (sans authentification), journalisé côté serveur
+    if (s0 === 'report-error' && req.method === 'POST') {
+      const { error_message, error_type, page_url, additional_context } = req.body || {}
+      if (!error_message) return res.status(400).json({ error: 'error_message is required' })
+      const clip = (v, n) => String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, n)
+      console.error('[Frontend Error Report]', {
+        type: clip(error_type || 'unknown', 60),
+        message: clip(error_message, 500),
+        page: clip(page_url, 300),
+        context: clip(typeof additional_context === 'string' ? additional_context : JSON.stringify(additional_context ?? ''), 500),
+      })
+      return res.status(202).json({ success: true })
+    }
+
+    // GET /api/log — journal d'audit (admin)
+    if (s0 === 'log' && req.method === 'GET') {
+      const logAdmin = await checkAuth(req)
+      if (logAdmin.error) return res.status(logAdmin.status || 401).json({ error: logAdmin.error })
+      if (logAdmin.role !== 'admin') return res.status(403).json({ error: 'Admin access required' })
+      const { data, error } = await supabaseAdmin
+        .from('logs').select('id, user_id, description, action, entity, entity_id, created_at')
+        .order('created_at', { ascending: false }).limit(Math.min(parseInt(req.query?.limit, 10) || 200, 500))
+      if (error) return res.status(500).json({ error: error.message })
+      return res.status(200).json(data || [])
+    }
+
+    // GET /api/support-tickets/admin/all — tous les tickets (admin)
+    if (s0 === 'support-tickets' && s1 === 'admin' && s2 === 'all' && req.method === 'GET') {
+      const ticketAdmin = await checkAuth(req)
+      if (ticketAdmin.error) return res.status(ticketAdmin.status || 401).json({ error: ticketAdmin.error })
+      if (ticketAdmin.role !== 'admin') return res.status(403).json({ error: 'Admin access required' })
+      let query = supabaseAdmin.from('support_tickets').select('*').order('created_at', { ascending: false }).limit(500)
+      if (req.query?.status) query = query.eq('status', req.query.status)
+      if (req.query?.priority) query = query.eq('priority', req.query.priority)
+      const { data, error } = await query
+      if (error) return res.status(500).json({ error: error.message })
+      return res.status(200).json({ success: true, count: (data || []).length, tickets: (data || []).map((t) => ({ ...t, ticketId: t.ticketId || t.id })) })
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // LOGISTICS ALERTS — admin uniquement (table logistics_alerts, migration 034)
+    //   GET   /api/logistics/alerts?limit=      liste (plus récentes d'abord)
+    //   GET   /api/logistics/alerts/stats       compteurs
+    //   PATCH /api/logistics/alerts/read-all    tout marquer comme lu
+    //   PATCH /api/logistics/alerts/:id/read    marquer une alerte comme lue
+    //   POST  /api/logistics/sync               génère les alertes depuis delivery_events
+    // ─────────────────────────────────────────────────────────────
+    if (s0 === 'logistics') {
+      try {
+        // Suivi par numéro : public. Tout le reste exige une connexion ; certaines routes l'admin.
+        const isPublicTrack = req.method === 'GET' && (s1 === 'track' || (s1 === 'expeditions' && s2 === 'track')) && (s1 === 'track' ? s2 : path[3])
+        const caller = isPublicTrack ? null : await checkAuth(req)
+        if (caller?.error) return res.status(caller.status || 401).json({ success: false, error: caller.error })
+        const adminOnly = () => {
+          if (caller.role === 'admin') return false
+          res.status(403).json({ success: false, error: 'Admin access required' })
+          return true
+        }
+        const NOT_CONFIGURED = { success: false, error: "Intégration Logidoo non configurée : cette donnée n'est pas encore disponible" }
+
+        // GET /api/logistics/track/:tid  et  /api/logistics/expeditions/track/:tid (public)
+        if (isPublicTrack) {
+          const tracking = await lookupTracking(s1 === 'track' ? s2 : path[3])
+          if (!tracking) return res.status(404).json({ success: false, error: 'Tracking number not found' })
+          return res.status(200).json({ success: true, tracking, expedition: tracking })
+        }
+
+        // POST /api/logistics/expeditions — créer une expédition suivie
+        if (req.method === 'POST' && s1 === 'expeditions' && !s2) {
+          if (!['artist', 'curator', 'advisor', 'admin'].includes(caller.role)) {
+            return res.status(403).json({ success: false, error: 'Only artists, curators, and advisors can create shipments' })
+          }
+          const result = await createExpedition(caller.user, req.body)
+          if (result.error) return res.status(result.status).json({ success: false, error: result.error })
+          return res.status(201).json({ success: true, expedition: result.expedition })
+        }
+
+        // GET /api/logistics/expeditions — toutes les expéditions (admin)
+        if (req.method === 'GET' && s1 === 'expeditions' && !s2) {
+          if (adminOnly()) return
+          const { data, error } = await supabaseAdmin.from('delivery_requests').select('*').order('created_at', { ascending: false }).limit(200)
+          if (error) return res.status(500).json({ success: false, error: error.message })
+          return res.status(200).json({ success: true, expeditions: (data || []).map(toDeliveryClient) })
+        }
+
+        // DELETE /api/logistics/cancel/:tid — annulation par le propriétaire ou l'admin, tant que non livrée
+        if (req.method === 'DELETE' && s1 === 'cancel' && s2) {
+          const { data: delivery } = await supabaseAdmin.from('delivery_requests').select('id, user_id, status').eq('tracking_id', String(s2).toUpperCase()).maybeSingle()
+          if (!delivery) return res.status(404).json({ success: false, error: 'Tracking number not found' })
+          if (caller.role !== 'admin' && delivery.user_id !== caller.userId) {
+            return res.status(403).json({ success: false, error: 'You can only cancel your own shipments' })
+          }
+          if (['delivered', 'cancelled'].includes(delivery.status)) {
+            return res.status(409).json({ success: false, error: `Shipment already ${delivery.status}` })
+          }
+          const { error } = await supabaseAdmin.from('delivery_requests').update({ status: 'cancelled' }).eq('id', delivery.id)
+          if (error) return res.status(500).json({ success: false, error: error.message })
+          await supabaseAdmin.from('delivery_events').insert({ delivery_id: delivery.id, status: 'cancelled', note: 'Annulée' })
+          return res.status(200).json({ success: true })
+        }
+
+        // Données fournies par Logidoo (zones, tarifs, points relais, mise à jour) : non branché
+        if ((req.method === 'GET' && (s1 === 'zones' || s1 === 'pickup-points')) ||
+            (req.method === 'POST' && s1 === 'rates') ||
+            (req.method === 'PUT' && s1 === 'update')) {
+          return res.status(501).json(NOT_CONFIGURED)
+        }
+
+        const TABLE_HINT = 'Table logistics_alerts absente : appliquer supabase/migrations/034_logistics_alerts.sql'
+        const failure = (err) =>
+          res.status(500).json({ success: false, error: /logistics_alerts/.test(err.message || '') ? TABLE_HINT : err.message })
+        const toClient = ({ tracking_id, ...alert }) => ({ ...alert, trackingId: tracking_id })
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+        // GET /api/logistics/alerts/stats
+        if (req.method === 'GET' && s1 === 'alerts' && s2 === 'stats') {
+          if (adminOnly()) return
+          const { data, error } = await supabaseAdmin.from('logistics_alerts').select('type, severity, read, created_at')
+          if (error) return failure(error)
+          const since = Date.now() - 24 * 60 * 60 * 1000
+          const count = (key) =>
+            (data || []).reduce((acc, a) => ({ ...acc, [a[key]]: (acc[a[key]] || 0) + 1 }), {})
+          return res.status(200).json({
+            success: true,
+            stats: {
+              total: (data || []).length,
+              unread: (data || []).filter((a) => !a.read).length,
+              last24h: (data || []).filter((a) => Date.parse(a.created_at) >= since).length,
+              byType: count('type'),
+              bySeverity: count('severity'),
+            },
+          })
+        }
+
+        // GET /api/logistics/alerts
+        if (req.method === 'GET' && s1 === 'alerts' && !s2) {
+          if (adminOnly()) return
+          const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 20, 1), 100)
+          const { data, error } = await supabaseAdmin
+            .from('logistics_alerts')
+            .select('id, delivery_id, tracking_id, type, severity, title, message, metadata, read, created_at')
+            .order('created_at', { ascending: false })
+            .limit(limit)
+          if (error) return failure(error)
+          return res.status(200).json({ success: true, alerts: (data || []).map(toClient) })
+        }
+
+        // PATCH /api/logistics/alerts/read-all
+        if (req.method === 'PATCH' && s1 === 'alerts' && s2 === 'read-all') {
+          if (adminOnly()) return
+          const { error } = await supabaseAdmin.from('logistics_alerts').update({ read: true }).eq('read', false)
+          if (error) return failure(error)
+          return res.status(200).json({ success: true })
+        }
+
+        // PATCH /api/logistics/alerts/:id/read
+        if (req.method === 'PATCH' && s1 === 'alerts' && s2 && path[3] === 'read') {
+          if (adminOnly()) return
+          if (!UUID_RE.test(s2)) return res.status(400).json({ success: false, error: 'Invalid alert id' })
+          const { data, error } = await supabaseAdmin
+            .from('logistics_alerts').update({ read: true }).eq('id', s2).select('id').maybeSingle()
+          if (error) return failure(error)
+          if (!data) return res.status(404).json({ success: false, error: 'Alert not found' })
+          return res.status(200).json({ success: true })
+        }
+
+        // POST /api/logistics/sync — alertes depuis les événements de livraison + retards
+        if (req.method === 'POST' && s1 === 'sync' && !s2) {
+          if (adminOnly()) return
+          const SEVERITY = {
+            pending: ['created', 'info', 'Livraison créée'],
+            created: ['created', 'info', 'Livraison créée'],
+            in_transit: ['status_change', 'info', 'Colis en transit'],
+            picked_up: ['status_change', 'info', 'Colis collecté'],
+            customs: ['status_change', 'info', 'En douane'],
+            delivered: ['delivered', 'success', 'Colis livré'],
+            cancelled: ['cancelled', 'warning', 'Livraison annulée'],
+            exception: ['delivery_exception', 'critical', 'Incident de livraison'],
+            failed: ['delivery_exception', 'critical', 'Échec de livraison'],
+          }
+          const { data: events, error: evErr } = await supabaseAdmin
+            .from('delivery_events')
+            .select('id, delivery_id, status, note, date, delivery_requests(tracking_id)')
+            .order('date', { ascending: false })
+            .limit(200)
+          if (evErr) return failure(evErr)
+
+          const { data: known, error: knownErr } = await supabaseAdmin
+            .from('logistics_alerts').select('event_id').not('event_id', 'is', null)
+          if (knownErr) return failure(knownErr)
+          const seen = new Set((known || []).map((a) => a.event_id))
+
+          const rows = (events || []).filter((e) => !seen.has(e.id)).map((e) => {
+            const [type, severity, title] = SEVERITY[e.status] || ['status_change', 'info', `Statut : ${e.status}`]
+            return {
+              delivery_id: e.delivery_id,
+              event_id: e.id,
+              tracking_id: e.delivery_requests?.tracking_id || null,
+              type, severity, title,
+              message: e.note || null,
+              created_at: e.date || new Date().toISOString(),
+            }
+          })
+
+          // Retards : livraison prévue dépassée et non terminée
+          const { data: late, error: lateErr } = await supabaseAdmin
+            .from('delivery_requests')
+            .select('id, tracking_id, status, delivery_date')
+            .lt('delivery_date', new Date().toISOString())
+            .not('status', 'in', '(delivered,cancelled)')
+            .limit(200)
+          if (lateErr) return failure(lateErr)
+          const { data: lateKnown } = await supabaseAdmin
+            .from('logistics_alerts').select('delivery_id').eq('type', 'delay')
+          const delayed = new Set((lateKnown || []).map((a) => a.delivery_id))
+          for (const d of late || []) {
+            if (delayed.has(d.id)) continue
+            rows.push({
+              delivery_id: d.id,
+              tracking_id: d.tracking_id,
+              type: 'delay', severity: 'warning',
+              title: 'Livraison en retard',
+              message: `Date prévue dépassée (${new Date(d.delivery_date).toLocaleDateString('fr-FR')}), statut : ${d.status}`,
+            })
+          }
+
+          if (rows.length) {
+            const { error: insErr } = await supabaseAdmin.from('logistics_alerts').insert(rows)
+            if (insErr) return failure(insErr)
+          }
+          return res.status(200).json({ success: true, created: rows.length, syncedCount: rows.length })
+        }
+
+        return res.status(404).json({ success: false, error: 'Logistics route not found' })
+      } catch (err) {
+        console.error('[Logistics Error]', err)
+        return res.status(500).json({ success: false, error: err.message })
+      }
+    }
+
     // ✨ GET /api/admin/stats — Real-time admin statistics
     if (s0 === 'admin' && s1 === 'stats' && req.method === 'GET') {
       try {
@@ -3837,7 +4294,7 @@ export default async function handler(req, res) {
 
         const { data: artworks, error: err } = await supabaseAdmin
           .from('artworks')
-          .select('id, kucibok_id, title, category, artist_id, status, created_at')
+          .select('id, kucibok_id, title, category, image, price, currency, visited, etherscan, certificate_path, artist_id, user_id, status, created_at, artists(id, name)')
           .eq('status', status)
           .order('created_at', { ascending: false })
           .limit(parseInt(limit))
@@ -3848,7 +4305,11 @@ export default async function handler(req, res) {
         }
 
         console.log('[GET /api/admin/artworks-list] Loaded:', artworks?.length, status)
-        return res.status(200).json({ artworks: artworks || [] })
+        const list = (artworks || []).map(({ artists: artistRow, ...artwork }) => ({
+          ...artwork,
+          artist: artistRow?.name || 'Artiste inconnu',
+        }))
+        return res.status(200).json({ artworks: list })
       } catch (error) {
         console.error('[Admin Artworks List Error]', error)
         return res.status(500).json({ error: error.message })
@@ -3877,7 +4338,7 @@ export default async function handler(req, res) {
         }
 
         console.log('[GET /api/admin/users-list] Loaded:', users?.length)
-        return res.status(200).json({ users: users || [] })
+        return res.status(200).json({ users: (users || []).map((u) => ({ ...u, _id: u.id })) })
       } catch (error) {
         console.error('[Admin Users List Error]', error)
         return res.status(500).json({ error: error.message })
@@ -4121,6 +4582,9 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: err.message })
       }
     }
+
+    // Routes complémentaires (notifications, galeries, livraisons, numérisation, auth…)
+    if (await handleExtraRoutes({ req, res, path, supabaseAdmin, checkAuth, createExpedition, toDeliveryClient, sendAdminNotification, sanitizeHtml })) return
 
     // Route not found
     res.status(404).json({

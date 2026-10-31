@@ -32,7 +32,9 @@ const DiscoveryCatalogue = lazy(() => import('../components/collector/DiscoveryC
 const FollowedArtists = lazy(() => import('../components/collector/FollowedArtists'))
 const PurchaseHistory = lazy(() => import('../components/collector/PurchaseHistory'))
 const DeliveryTracking = lazy(() => import('../components/collector/DeliveryTracking'))
-const CollectorProfile = lazy(() => import('../components/collector/CollectorProfile'))
+const CollectorProfile = lazy(() =>
+  import('../components/collector/CollectorProfile').then((m) => ({ default: m.CollectorProfile }))
+)
 const Admin = lazy(() => import('../pages/dashboard/Admin'))
 const ArtworkCheckout = lazy(() => import('../pages/ArtworkCheckout'))
 const ArtworkPurchaseSuccess = lazy(() => import('../pages/ArtworkPurchaseSuccess'))

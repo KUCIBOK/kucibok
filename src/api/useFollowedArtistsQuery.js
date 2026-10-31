@@ -23,7 +23,7 @@ async function fetchFollowedArtists() {
 async function followArtist(artistId) {
   if (!utils.token) throw new Error('Not authenticated')
 
-  const res = await fetch(`${utils.api}/artist/follow/${artistId}`, {
+  const res = await fetch(`${utils.api}/artists/follow/${artistId}`, {
     ...utils.options,
     method: 'POST',
     body: JSON.stringify({}),
@@ -38,7 +38,7 @@ async function followArtist(artistId) {
 async function unfollowArtist(artistId) {
   if (!utils.token) throw new Error('Not authenticated')
 
-  const res = await fetch(`${utils.api}/artist/unfollow/${artistId}`, {
+  const res = await fetch(`${utils.api}/artists/unfollow/${artistId}`, {
     ...utils.options,
     method: 'POST',
     body: JSON.stringify({}),

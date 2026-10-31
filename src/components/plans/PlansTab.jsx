@@ -39,7 +39,7 @@ function PlanCard({ plan }) {
           <div className="flex items-center gap-2 mb-1">
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
             <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${cfg.badge}`}>
-              {plan.role === 'buyer' ? 'Acheteur' : plan.role === 'curator' ? 'Curateur' : plan.role ?? '—'}
+              {plan.role === 'buyer' ? 'Acheteur' : plan.role === 'curator' ? 'Curateur' : plan.role === 'advisor' ? 'Advisor' : plan.role ?? '—'}
             </span>
           </div>
           <h3 className="text-sm font-semibold text-white truncate">{plan.name}</h3>
@@ -206,6 +206,7 @@ function AddPlanModal({ closeModal }) {
   const roleOptions = [
     { value: 'buyer', label: 'Acheteur' },
     { value: 'curator', label: 'Curateur' },
+    { value: 'advisor', label: 'Advisor' },
   ]
 
   const handleAddPlan = async (e) => {

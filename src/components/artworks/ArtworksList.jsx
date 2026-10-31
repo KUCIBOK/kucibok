@@ -16,9 +16,9 @@ import { DownloadAction } from './DownloadAction'
 import { UpdateEtherscan } from './UpdateEtherscan'
 import { UpdateArtworkAction } from './UpdateArtworkAction'
 import { GenerateCertificateAction } from './GenerateCertificateAction'
-import { DataTable, Badge, StatusBadge, EmptyState } from '../ui'
+import { DataTable, Badge, StatusBadge, EmptyState, ErrorState } from '../ui'
 
-export const ArtworksList = ({ artworks, user }) => {
+export const ArtworksList = ({ artworks, user, error, onRetry, emptyMessage }) => {
   const getStatusVariant = (status) => {
     switch (status) {
       case 'approved':
@@ -153,6 +153,19 @@ export const ArtworksList = ({ artworks, user }) => {
       ),
     },
   ]
+
+  if (error) {
+    return <ErrorState title="Impossible de charger les œuvres" error={error} onRetry={onRetry} />
+  }
+
+  if (emptyMessage && (!artworks || artworks.length === 0)) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-4">
+        <Image className="w-12 h-12 text-kcb-pierre/40" />
+        <p className="text-kcb-pierre text-sm">{emptyMessage}</p>
+      </div>
+    )
+  }
 
   if (!artworks || artworks.length === 0) {
     return (

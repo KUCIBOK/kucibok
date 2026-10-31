@@ -45,7 +45,7 @@ export async function getPublishedPosts() {
     const response = await fetch(`${api}/blog/published`, { ...utils.options })
     const body = await response.json()
     const posts = unwrapList(body)
-    if (posts?.length >= 1) return posts
+    if (posts) return posts
     return { error: body?.error || body?.message }
   } catch (error) {
     return { error: error.message }
@@ -57,7 +57,7 @@ export async function getArchivedPosts() {
     const response = await fetch(`${api}/blog/archived`, { ...utils.options })
     const body = await response.json()
     const posts = unwrapList(body)
-    if (posts?.length >= 1) return posts
+    if (posts) return posts
     return { error: body?.error || body?.message }
   } catch (error) {
     return { error: error.message }
@@ -102,7 +102,7 @@ export async function getArchivedPostsByUserId(id) {
 
 export async function archivePost(id) {
   try {
-    const response = await fetch(`${api}/blog/archive/${id}`, { ...utils.options })
+    const response = await fetch(`${api}/blog/archive/${id}`, { ...utils.options, method: 'POST' })
     const body = await response.json()
     const post = unwrapItem(body)
     if (post) return post
@@ -114,7 +114,7 @@ export async function archivePost(id) {
 
 export async function publishPost(id) {
   try {
-    const response = await fetch(`${api}/blog/publish/${id}`, { ...utils.options })
+    const response = await fetch(`${api}/blog/publish/${id}`, { ...utils.options, method: 'POST' })
     const body = await response.json()
     const post = unwrapItem(body)
     if (post) return post

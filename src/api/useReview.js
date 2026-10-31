@@ -29,7 +29,7 @@ export async function getReviewsByArtworkId(id) {
       ...utils.options,
     })
     const reviews = await response.json()
-    if (reviews?.length >= 1) {
+    if (Array.isArray(reviews)) {
       return reviews
     }
     return {

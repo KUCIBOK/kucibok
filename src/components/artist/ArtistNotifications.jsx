@@ -11,6 +11,7 @@ import {
   Clock,
 } from 'lucide-react'
 import { utils } from '../../api/useAPI'
+import { ErrorState } from '../ui'
 import { useT } from '../../i18n'
 import { artistT } from '../../i18n/artist'
 
@@ -19,18 +20,18 @@ export default function ArtistNotifications() {
   const [notifications, setNotifications] = useState([])
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
 
   useEffect(() => {
     const load = async () => {
       try {
         const res = await fetch(`${utils.api}/notifications`, { ...utils.options, method: 'GET' })
-        if (res.ok) {
-          const body = await res.json()
-          const list = Array.isArray(body.data) ? body.data : Array.isArray(body) ? body : []
-          setNotifications(list)
-        }
-      } catch {
-        // list stays empty on error
+        if (!res.ok) throw new Error(`Notifications indisponibles (HTTP ${res.status})`)
+        const body = await res.json()
+        const list = Array.isArray(body.data) ? body.data : Array.isArray(body) ? body : []
+        setNotifications(list)
+      } catch (err) {
+        setLoadError(err.message)
       } finally {
         setLoading(false)
       }
@@ -47,20 +48,31 @@ export default function ArtistNotifications() {
         ? notifications.filter((n) => !n.read)
         : notifications.filter((n) => n.read)
 
-  const handleMarkRead = (id) => {
-    setNotifications(notifications.map((n) => (n._id === id ? { ...n, read: true } : n)))
+  // Appelle l'API puis met à jour la liste locale seulement si le serveur a accepté
+  const call = async (path, method) => {
+    try {
+      const res = await fetch(`${utils.api}/notifications${path}`, { ...utils.options, method })
+      return res.ok
+    } catch {
+      return false
+    }
   }
 
-  const handleMarkAllRead = () => {
-    setNotifications(notifications.map((n) => ({ ...n, read: true })))
+  const handleMarkRead = async (id) => {
+    if (await call(`/${id}/read`, 'PATCH'))
+      setNotifications((list) => list.map((n) => (n._id === id ? { ...n, read: true } : n)))
   }
 
-  const handleDelete = (id) => {
-    setNotifications(notifications.filter((n) => n._id !== id))
+  const handleMarkAllRead = async () => {
+    if (await call('/read-all', 'PATCH')) setNotifications((list) => list.map((n) => ({ ...n, read: true })))
   }
 
-  const handleClearAll = () => {
-    setNotifications([])
+  const handleDelete = async (id) => {
+    if (await call(`/${id}`, 'DELETE')) setNotifications((list) => list.filter((n) => n._id !== id))
+  }
+
+  const handleClearAll = async () => {
+    if (await call('', 'DELETE')) setNotifications([])
   }
 
   const getSeverityStyle = (severity) => {
@@ -87,6 +99,7 @@ export default function ArtistNotifications() {
 
   return (
     <div className="space-y-6">
+      {loadError && <ErrorState title="Impossible de charger les notifications" error={loadError} />}
       {/* En-tête */}
       <div className="flex items-center justify-between">
         <div>

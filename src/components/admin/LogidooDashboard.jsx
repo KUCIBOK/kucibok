@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { utils } from '../../api/useAPI'
+import { ErrorState } from '../ui'
 import {
   Truck,
   Package,
@@ -19,30 +20,42 @@ export default function LogidooDashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [error, setError] = useState(null)
+
+  // Appelle l'API logistique ; lève une erreur lisible si elle ne répond pas
+  const callApi = async (path, options = {}) => {
+    const response = await fetch(`${utils.api}/logistics/${path}`, {
+      headers: utils.options.headers,
+      ...options,
+    })
+    const data = await response.json().catch(() => null)
+    if (!response.ok || !data?.success) {
+      throw new Error(data?.error || `API logistique indisponible (HTTP ${response.status})`)
+    }
+    return data
+  }
+
+  const reload = async () => {
+    setError(null)
+    await Promise.all([loadAlerts(), loadStats()])
+  }
 
   useEffect(() => {
-    loadAlerts()
-    loadStats()
+    reload()
 
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
-      loadAlerts()
-      loadStats()
+      reload()
     }, 30000)
     return () => clearInterval(interval)
   }, [])
 
   const loadAlerts = async () => {
     try {
-      const response = await fetch(`${utils.api}/logistics/alerts?limit=20`, {
-        headers: utils.options.headers,
-      })
-      const data = await response.json()
-      if (data.success) {
-        setAlerts(data.alerts)
-      }
+      const data = await callApi('alerts?limit=20')
+      setAlerts(data.alerts || [])
     } catch (err) {
-      // Silenced for production
+      setError(err.message)
     } finally {
       setLoading(false)
     }
@@ -50,58 +63,30 @@ export default function LogidooDashboard() {
 
   const loadStats = async () => {
     try {
-      const response = await fetch(`${utils.api}/logistics/alerts/stats`, {
-        headers: utils.options.headers,
-      })
-      const data = await response.json()
-      if (data.success) {
-        setStats(data.stats)
-      }
+      const data = await callApi('alerts/stats')
+      setStats(data.stats)
     } catch (err) {
-      // Silenced for production
+      setError(err.message)
     }
   }
 
-  const handleMarkRead = async (alertId) => {
+  const runAction = async (path, options) => {
     try {
-      await fetch(`${utils.api}/logistics/alerts/${alertId}/read`, {
-        method: 'PATCH',
-        headers: utils.options.headers,
-      })
-      loadAlerts()
-      loadStats()
+      await callApi(path, options)
+      await reload()
     } catch (err) {
-      // Silenced for production
+      setError(err.message)
     }
   }
 
-  const handleMarkAllRead = async () => {
-    try {
-      await fetch(`${utils.api}/logistics/alerts/read-all`, {
-        method: 'PATCH',
-        headers: utils.options.headers,
-      })
-      loadAlerts()
-      loadStats()
-    } catch (err) {
-      // Silenced for production
-    }
-  }
+  const handleMarkRead = (alertId) => runAction(`alerts/${alertId}/read`, { method: 'PATCH' })
+
+  const handleMarkAllRead = () => runAction('alerts/read-all', { method: 'PATCH' })
 
   const handleSync = async () => {
     setSyncing(true)
-    try {
-      await fetch(`${utils.api}/logistics/sync`, {
-        method: 'POST',
-        headers: utils.options.headers,
-      })
-      loadAlerts()
-      loadStats()
-    } catch (err) {
-      // Silenced for production
-    } finally {
-      setSyncing(false)
-    }
+    await runAction('sync', { method: 'POST' })
+    setSyncing(false)
   }
 
   const getSeverityColor = (severity) => {
@@ -163,6 +148,14 @@ export default function LogidooDashboard() {
         </button>
       </div>
 
+      {error && (
+        <ErrorState
+          title="Impossible de joindre l'API logistique"
+          error={error}
+          onRetry={reload}
+        />
+      )}
+
       {/* Statistiques */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -218,7 +211,9 @@ export default function LogidooDashboard() {
           )}
         </div>
 
-        {alerts.length === 0 ? (
+        {alerts.length === 0 && error ? (
+          <p className="text-center py-12 text-kcb-pierre">Alertes indisponibles.</p>
+        ) : alerts.length === 0 ? (
           <div className="text-center py-12">
             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
             <p className="text-kcb-pierre">Aucune alerte - Tout est en ordre!</p>
@@ -227,7 +222,7 @@ export default function LogidooDashboard() {
           <div className="space-y-3">
             {alerts.map((alert) => (
               <div
-                key={alert._id}
+                key={alert.id}
                 className={`p-4 rounded-[4px] border ${getSeverityColor(alert.severity)} ${
                   !alert.read ? 'opacity-100' : 'opacity-60'
                 }`}
@@ -259,7 +254,7 @@ export default function LogidooDashboard() {
                   <div className="flex gap-2">
                     {!alert.read && (
                       <button
-                        onClick={() => handleMarkRead(alert._id)}
+                        onClick={() => handleMarkRead(alert.id)}
                         className="p-2 hover:bg-white/10 rounded transition"
                         title="Marquer comme lu"
                       >

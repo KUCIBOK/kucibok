@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "test:api": "newman run postman/kucibok.postman_collection.json -e postman/kucibok.postman_environment.json --reporters cli,htmlextra --reporter-htmlextra-export reports/api-test-report.html",
     "test:api:ci": "newman run postman/kucibok.postman_collection.json -e postman/kucibok.postman_environment.json --reporters cli",
-    "prepare": "node -e \"if(process.env.CI){process.exit(0)}\" || husky"
+    "prepare": "node -e \"if(process.env.CI){process.exit(0)}\" || husky",
+    "test:e2e": "VITE_SUPABASE_URL=https://fake.supabase.co VITE_SUPABASE_ANON_KEY=fake-anon VITE_API_KEY=test-key VITE_API_URL=/api vite build --outDir .e2e-dist --emptyOutDir && E2E_DIST=$PWD/.e2e-dist vitest run --config vitest.e2e.config.js"
   },
   "dependencies": {
     "@sentry/react": "^10.70.0",

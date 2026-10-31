@@ -13,9 +13,10 @@ import { utils } from './useAPI'
 async function fetchArtworksByStatus(status) {
   if (!utils.token) return []
   const res = await fetch(`${utils.api}/admin/artworks-list?status=${status}`, utils.options)
-  if (!res.ok) throw new Error(`Failed to fetch ${status} artworks`)
+  if (!res.ok) throw new Error(`Impossible de charger les œuvres (${status}) : HTTP ${res.status}`)
   const data = await res.json()
-  return data.artworks || []
+  if (!Array.isArray(data?.artworks)) throw new Error(`Format de réponse inattendu pour les œuvres (${status})`)
+  return data.artworks
 }
 
 /**
@@ -127,10 +128,13 @@ export function useDashboardStats() {
   return {
     pending: pending.data || [],
     pendingLoading: pending.isLoading,
+    pendingError: pending.error,
     approved: approved.data || [],
     approvedLoading: approved.isLoading,
+    approvedError: approved.error,
     rejected: rejected.data || [],
     rejectedLoading: rejected.isLoading,
+    rejectedError: rejected.error,
     isLoading: pending.isLoading || approved.isLoading || rejected.isLoading,
   }
 }

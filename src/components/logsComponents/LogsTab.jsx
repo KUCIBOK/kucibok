@@ -63,7 +63,7 @@ export function LogsTab() {
                     {new Date(log.created_at).toLocaleString()}
                   </td>
                   <td className="py-2 px-1 md:px-2 align-top">
-                    <UserInfo id={log.userId} />
+                    <UserInfo id={log.user_id ?? log.userId} />
                   </td>
                 </tr>
               ))}
@@ -116,6 +116,10 @@ function UserInfo({ id }) {
   useEffect(() => {
     let mounted = true
     const fetchUser = async () => {
+      if (!id) {
+        setUser({ name: 'Système', username: 'Système' })
+        return
+      }
       try {
         const user = await getUserById(id)
         if (mounted) {

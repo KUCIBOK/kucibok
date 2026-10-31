@@ -17,7 +17,7 @@ export function useLogistics() {
         headers: utils.options.headers,
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Sync failed')
+      if (!response.ok) throw new Error(data.error || data.message || 'Sync failed')
       return data
     } catch (err) {
       setError(err.message)
@@ -34,7 +34,7 @@ export function useLogistics() {
     try {
       const response = await fetch(`${API_BASE_URL}/track/${trackingId}`)
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to get tracking info')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to get tracking info')
       return data
     } catch (err) {
       setError(err.message)
@@ -53,7 +53,7 @@ export function useLogistics() {
         headers: utils.options.headers,
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to get expeditions')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to get expeditions')
       return data
     } catch (err) {
       setError(err.message)
@@ -74,7 +74,7 @@ export function useLogistics() {
         body: JSON.stringify(expeditionData),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to create expedition')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to create expedition')
       return data
     } catch (err) {
       setError(err.message)
@@ -91,7 +91,7 @@ export function useLogistics() {
     try {
       const response = await fetch(`${API_BASE_URL}/expeditions/track/${trackingNumber}`)
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to get expedition')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to get expedition')
       return data
     } catch (err) {
       setError(err.message)
@@ -112,7 +112,7 @@ export function useLogistics() {
         body: JSON.stringify({ origin, destination, packageDetails }),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to get rates')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to get rates')
       return data
     } catch (err) {
       setError(err.message)
@@ -131,7 +131,7 @@ export function useLogistics() {
         headers: utils.options.headers,
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to get zones')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to get zones')
       return data
     } catch (err) {
       setError(err.message)
@@ -150,7 +150,7 @@ export function useLogistics() {
         headers: utils.options.headers,
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to get pickup points')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to get pickup points')
       return data
     } catch (err) {
       setError(err.message)
@@ -170,7 +170,7 @@ export function useLogistics() {
         headers: utils.options.headers,
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to update status')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to update status')
       return data
     } catch (err) {
       setError(err.message)
@@ -190,7 +190,7 @@ export function useLogistics() {
         headers: utils.options.headers,
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to cancel delivery')
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to cancel delivery')
       return data
     } catch (err) {
       setError(err.message)
