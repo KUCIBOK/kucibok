@@ -21,6 +21,8 @@ export default function LogidooDashboard() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState(null)
+  const [diag, setDiag] = useState(null) // { title, data } ou { title, error }
+  const [diagLoading, setDiagLoading] = useState(false)
 
   // Appelle l'API logistique ; lève une erreur lisible si elle ne répond pas
   const callApi = async (path, options = {}) => {
@@ -89,6 +91,20 @@ export default function LogidooDashboard() {
     setSyncing(false)
   }
 
+  // Outils Logidoo : test de connexion, forme des réponses, webhooks reçus
+  const runDiag = async (title, path) => {
+    setDiagLoading(true)
+    setDiag(null)
+    try {
+      const data = await callApi(path)
+      setDiag({ title, data })
+    } catch (err) {
+      setDiag({ title, error: err.message })
+    } finally {
+      setDiagLoading(false)
+    }
+  }
+
   const getSeverityColor = (severity) => {
     const colors = {
       critical: 'bg-red-500/20 border-red-500/50 text-red-300',
@@ -146,6 +162,47 @@ export default function LogidooDashboard() {
           <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
           {syncing ? 'Synchronisation...' : 'Sync Now'}
         </button>
+      </div>
+
+      {/* Intégration Logidoo : vérifier la connexion et relever les schémas réels */}
+      <div className="bg-kcb-ardoise/50 rounded-[4px] border border-white/[0.06] p-6">
+        <h2 className="text-lg font-bold text-white mb-1">Intégration Logidoo</h2>
+        <p className="text-sm text-kcb-pierre mb-4">
+          Teste la connexion avec le jeton configuré sur le serveur (staging par défaut) et relève la forme des
+          réponses, sans afficher de données personnelles.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => runDiag('Connexion', 'logidoo/status?check=1')}
+            disabled={diagLoading}
+            className="px-3 py-2 bg-kcb-or hover:bg-kcb-or/90 rounded-[4px] text-kcb-noir text-sm font-medium transition disabled:opacity-50"
+          >
+            Tester la connexion
+          </button>
+          <button
+            onClick={() => runDiag('Schémas des réponses', 'logidoo/probe')}
+            disabled={diagLoading}
+            className="px-3 py-2 bg-kcb-ardoise border border-white/[0.1] hover:border-kcb-or/50 rounded-[4px] text-white text-sm transition disabled:opacity-50"
+          >
+            Relever les schémas
+          </button>
+          <button
+            onClick={() => runDiag('Webhooks reçus', 'logidoo/webhooks')}
+            disabled={diagLoading}
+            className="px-3 py-2 bg-kcb-ardoise border border-white/[0.1] hover:border-kcb-or/50 rounded-[4px] text-white text-sm transition disabled:opacity-50"
+          >
+            Webhooks reçus
+          </button>
+        </div>
+        {diagLoading && <p className="text-sm text-kcb-pierre mt-3">Appel en cours…</p>}
+        {diag?.error && (
+          <ErrorState className="mt-3" title={`${diag.title} : échec`} error={diag.error} />
+        )}
+        {diag?.data && (
+          <pre className="mt-3 max-h-96 overflow-auto bg-kcb-noir/60 border border-white/[0.06] rounded-[4px] p-3 text-xs text-kcb-sable whitespace-pre-wrap">
+            {JSON.stringify(diag.data, null, 2)}
+          </pre>
+        )}
       </div>
 
       {error && (

@@ -9,6 +9,7 @@ import { requireAuth } from './_lib/auth.js'
 import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
 import { handleExtraRoutes, createNotifier } from './_modules/extra-routes.js'
+import { handleLogidooRoutes } from './_modules/logidoo.js'
 import DOMPurify from 'dompurify'
 import PDFDocument from 'pdfkit'
 
@@ -4015,14 +4016,26 @@ export default async function handler(req, res) {
       try {
         // Suivi par numéro : public. Tout le reste exige une connexion ; certaines routes l'admin.
         const isPublicTrack = req.method === 'GET' && (s1 === 'track' || (s1 === 'expeditions' && s2 === 'track')) && (s1 === 'track' ? s2 : path[3])
-        const caller = isPublicTrack ? null : await checkAuth(req)
+        // Webhook Logidoo : appelé par Logidoo, sans session, protégé par un secret dans l'URL
+        const isLogidooWebhook = req.method === 'POST' && s1 === 'logidoo' && s2 === 'webhook'
+        const caller = isPublicTrack || isLogidooWebhook ? null : await checkAuth(req)
         if (caller?.error) return res.status(caller.status || 401).json({ success: false, error: caller.error })
         const adminOnly = () => {
           if (caller.role === 'admin') return false
           res.status(403).json({ success: false, error: 'Admin access required' })
           return true
         }
-        const NOT_CONFIGURED = { success: false, error: "Intégration Logidoo non configurée : cette donnée n'est pas encore disponible" }
+        const NOT_AVAILABLE = {
+          zones: "Logidoo n'expose pas de zones tarifées : utiliser les points de dépôt par pays (pickup-points)",
+          'pickup-points': "Points de dépôt Logidoo : le schéma de la réponse /node n'est pas documenté, mapping en attente (lancer « Tester Logidoo » dans l'onglet Logistique)",
+          rates: "Logidoo ne propose pas de devis séparé : le coût est renvoyé à la création de l'expédition",
+          update: "Mise à jour de statut Logidoo : vocabulaire des statuts et contenu des webhooks à confirmer (voir les webhooks reçus dans l'onglet Logistique)",
+        }
+
+        // Client Logidoo : état de la connexion, diagnostic des schémas, webhooks
+        if (s1 === 'logidoo') {
+          if (await handleLogidooRoutes({ req, res, path, supabaseAdmin, adminOnly })) return
+        }
 
         // GET /api/logistics/track/:tid  et  /api/logistics/expeditions/track/:tid (public)
         if (isPublicTrack) {
@@ -4069,7 +4082,7 @@ export default async function handler(req, res) {
         if ((req.method === 'GET' && (s1 === 'zones' || s1 === 'pickup-points')) ||
             (req.method === 'POST' && s1 === 'rates') ||
             (req.method === 'PUT' && s1 === 'update')) {
-          return res.status(501).json(NOT_CONFIGURED)
+          return res.status(501).json({ success: false, error: `Intégration Logidoo : ${NOT_AVAILABLE[s1]}` })
         }
 
         const TABLE_HINT = 'Table logistics_alerts absente : appliquer supabase/migrations/034_logistics_alerts.sql'
