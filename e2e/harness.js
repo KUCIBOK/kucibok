@@ -46,8 +46,8 @@ export async function startHarness({ distDir }) {
     user: { id: u.id, aud: 'authenticated', role: 'authenticated', email: db.tables.users.find((x) => x.id === u.id).email, email_confirmed_at: new Date().toISOString(), app_metadata: {}, user_metadata: { role: db.tables.users.find((x) => x.id === u.id).role, name: 'Test' }, created_at: new Date().toISOString() },
   })
 
-  async function newPage(user) {
-    const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] })
+  async function newPage(user, { viewport = { width: 1366, height: 900 } } = {}) {
+    const context = await browser.newContext({ viewport, permissions: ['clipboard-read', 'clipboard-write'] })
     const page = await context.newPage()
     const problems = { pageErrors: [], consoleErrors: [], apiErrors: [] }
     page.on('pageerror', (e) => problems.pageErrors.push(String(e.message).slice(0, 300)))

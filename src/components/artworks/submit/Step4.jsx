@@ -2,45 +2,28 @@ import { useArtworkMutations } from '../../../api/useArtworkMutationsQuery'
 import { useNavigate } from 'react-router-dom'
 import { DataLoader } from '../../loaders/PageLoader'
 import DOMPurify from 'dompurify'
+import { buildArtworkFormData } from './buildArtworkFormData'
 
-export const Step4 = ({ formState, setFormState, user, profile }) => {
+export const Step4 = ({ formState, setFormState, user }) => {
   const navigate = useNavigate()
   const { submitArtwork } = useArtworkMutations() /* ✨ React Query */
   const submit = async () => {
     try {
       setFormState({ ...formState, loading: true })
-      let data = { ...formState }
-      if (user?.role == 'artist') {
-        data.artist = profile?.name || ''
-        data.artistId = profile?.id || ''
-      } else {
-        data.artist = formState.artist
-        data.artistId = null
-      }
-      delete data.step
-      delete data.tag
-      delete data.loading
-      delete data.show
-      delete data.error
-      const formData = new FormData()
-      Object.keys(data).forEach((key) => {
-        if (key === 'tags' && Array.isArray(data[key])) {
-          formData.append(key, JSON.stringify(data[key]))
-        } else {
-          formData.append(key, data[key])
-        }
-      })
+      const formData = buildArtworkFormData(formState)
       const artwork = await submitArtwork(formData)
       if (artwork?.error) {
         setFormState({ ...formState, loading: false, error: artwork.error })
         return
       }
-      if (artwork?.id) {
-        user?.role == 'artist' ? navigate('/dashboard/artist') : navigate('/dashboard/curator')
+      if (!artwork?.id) {
+        setFormState({ ...formState, loading: false, error: 'Réponse inattendue du serveur : l’œuvre n’a pas pu être confirmée. Réessayez.' })
+        return
       }
+      user?.role == 'artist' ? navigate('/dashboard/artist') : navigate('/dashboard/curator')
       setFormState({ ...formState, loading: false })
     } catch (error) {
-      setFormState({ ...formState, loading: false })
+      setFormState({ ...formState, loading: false, error: error?.message || 'Erreur inattendue lors de la soumission.' })
     }
   }
 

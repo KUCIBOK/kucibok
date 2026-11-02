@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { loadApi } from './helpers'
 
+const ARTIST_ROW_ID = '00000000-0000-4000-8000-0000000000a1'
 let db, call, artist, other, buyer, admin
 
 beforeEach(async () => {
@@ -11,14 +12,14 @@ beforeEach(async () => {
   other = db.addUser({ role: 'artist', email: 'other@test.local' })
   buyer = db.addUser({ role: 'buyer', email: 'buyer@test.local' })
   admin = db.addUser({ role: 'admin', email: 'admin@test.local' })
-  db.tables.artists = [{ id: 'a1', user_id: artist.id, name: 'Artiste', total_sales: 12, total_earnings: 3400000 }]
+  db.tables.artists = [{ id: ARTIST_ROW_ID, user_id: artist.id, name: 'Artiste', total_sales: 12, total_earnings: 3400000 }]
 })
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Ventes et gains des artistes jamais publics', () => {
   const leaks = (body) => /total_sales|total_earnings|3400000/.test(JSON.stringify(body))
 
-  it.each(['/api/artists', '/api/artist', '/api/artists/a1'])('%s (anonyme) ne contient ni ventes ni gains', async (url) => {
+  it.each(['/api/artists', '/api/artist', `/api/artists/${ARTIST_ROW_ID}`])('%s (anonyme) ne contient ni ventes ni gains', async (url) => {
     const res = await call({ url })
     expect(res.statusCode).toBe(200)
     expect(leaks(res.body)).toBe(false)
