@@ -22,6 +22,39 @@ const UNIQUE_KEYS = {
   reviews: ['artwork_id', 'professional_id'],
 }
 
+
+// Schéma de la table artworks (migrations 001 + 031) : le faux client rejette, comme PostgREST/Postgres,
+// les colonnes inconnues, les UUID invalides, les tableaux mal formés et la contrainte `condition`.
+const ARTWORK_COLUMNS = {
+  uuid: ['id', 'user_id', 'artist_id', 'owner_id', 'collection_id', 'category_id'],
+  text: ['kucibok_id', 'title', 'description', 'image', 'medium', 'condition', 'provenance', 'currency', 'category', 'sold_currency', 'auction_status', 'availability_status', 'status', 'certificate_path', 'etherscan', 'delivery_details', 'is_delivered', 'source'],
+  numeric: ['height', 'width', 'weight', 'price', 'sold_price', 'average_rating', 'price_documented', 'edition_number', 'edition_total', 'visited', 'likes_count'],
+  boolean: ['for_sale', 'sold', 'for_bid', 'featured', 'priority_access'],
+  array: ['tags'],
+  timestamp: ['created_at', 'updated_at', 'sold_at', 'acquisition_date'],
+}
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CONDITIONS = ['excellent', 'very_good', 'good', 'fair']
+
+const validateArtworkRow = (row) => {
+  const typeOf = {}
+  for (const [type, cols] of Object.entries(ARTWORK_COLUMNS)) cols.forEach((c) => { typeOf[c] = type })
+  for (const [key, value] of Object.entries(row)) {
+    const type = typeOf[key]
+    if (!type) return { code: 'PGRST204', message: `Could not find the '${key}' column of 'artworks' in the schema cache` }
+    if (value === null || value === undefined) continue
+    if (type === 'uuid' && !UUID_PATTERN.test(String(value))) return { code: '22P02', message: `invalid input syntax for type uuid: "${value}"` }
+    if (type === 'numeric' && (typeof value === 'boolean' || value === '' || Number.isNaN(Number(value)))) return { code: '22P02', message: `invalid input syntax for type numeric: "${value}"` }
+    if (type === 'boolean' && typeof value !== 'boolean') return { code: '22P02', message: `invalid input syntax for type boolean: "${value}"` }
+    if (type === 'array' && !Array.isArray(value)) return { code: '22P02', message: `malformed array literal: "${value}"` }
+    if (type === 'text' && typeof value === 'object') return { code: '22P02', message: `invalid input syntax for type text: ${JSON.stringify(value)}` }
+  }
+  if (row.condition != null && !CONDITIONS.includes(row.condition)) return { code: '23514', message: 'new row for relation "artworks" violates check constraint "artworks_condition_check"' }
+  if (row.price != null && Number(row.price) < 0) return { code: '23514', message: 'new row for relation "artworks" violates check constraint "artworks_price_check"' }
+  return null
+}
+const TABLE_VALIDATORS = { artworks: validateArtworkRow }
+
 let counter = 0
 const uuid = () => {
   counter += 1
@@ -101,6 +134,9 @@ export function createFakeDb(seed = {}) {
       let rows
       if (this.op === 'insert' || this.op === 'upsert') {
         const list = Array.isArray(this.payload) ? this.payload : [this.payload]
+        const validate = TABLE_VALIDATORS[this.name]
+        const invalid = validate && list.map(validate).find(Boolean)
+        if (invalid) return { data: null, error: invalid }
         const unique = UNIQUE_KEYS[this.name]
         if (unique && list.some((p) => table(this.name).some((r) => unique.every((k) => r[k] === p[k])))) {
           return { data: null, error: { code: '23505', message: `duplicate key value violates unique constraint on ${this.name}` } }
@@ -111,6 +147,8 @@ export function createFakeDb(seed = {}) {
           return row
         })
       } else if (this.op === 'update') {
+        const invalid = TABLE_VALIDATORS[this.name]?.(this.payload)
+        if (invalid) return { data: null, error: invalid }
         rows = this.matching()
         rows.forEach((r) => Object.assign(r, this.payload))
       } else if (this.op === 'delete') {

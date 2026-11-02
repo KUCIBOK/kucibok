@@ -10,12 +10,9 @@ import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
 import { handleExtraRoutes, createNotifier } from './_modules/extra-routes.js'
 import { handleLogidooRoutes } from './_modules/logidoo.js'
+import { normalizeArtworkInput, artworkDatabaseError } from './_modules/artwork-input.js'
 import DOMPurify from 'dompurify'
 import PDFDocument from 'pdfkit'
-
-// Champs d'une œuvre que le client ne doit jamais pouvoir écrire directement :
-// modération, certification et identifiants.
-const PROTECTED_ARTWORK_FIELDS = ['id', 'status', 'kucibok_id', 'certificate_path', 'created_at', 'updated_at']
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -395,25 +392,6 @@ export default async function handler(req, res) {
         })
     }
 
-    // ✅ Helper function: Validate artwork data
-    const validateArtwork = (data) => {
-      const errors = []
-      if (data.price !== undefined && data.price !== null) {
-        const price = parseFloat(data.price)
-        if (isNaN(price) || price < 0) errors.push('price must be a positive number')
-      }
-      if (data.status && !['pending', 'approved', 'rejected', 'archived'].includes(data.status)) {
-        errors.push('status must be one of: pending, approved, rejected, archived')
-      }
-      if (data.for_sale !== undefined && typeof data.for_sale !== 'boolean') {
-        errors.push('for_sale must be a boolean')
-      }
-      if (data.currency && !['USD', 'EUR', 'FCFA', 'XOF'].includes(data.currency.toUpperCase())) {
-        errors.push('currency must be one of: USD, EUR, FCFA, XOF')
-      }
-      return errors
-    }
-
     // ✅ Helper function: Get authenticated user
     // Renvoie l'utilisateur avec son rôle métier (table users). Le `role` de l'objet Supabase Auth
     // vaut toujours 'authenticated' : s'y fier rendait inopérants tous les contrôles artist/curator/advisor/admin.
@@ -690,10 +668,10 @@ export default async function handler(req, res) {
         const user = await getAuthUser()
         if (!user) return
 
-        // ✅ CRITICAL: Validate input
-        const validationErrors = validateArtwork(req.body)
+        // Liste blanche + conversion des types : le corps n'est jamais inséré tel quel
+        const { data: artworkInput, errors: validationErrors } = normalizeArtworkInput(req.body, { partial: false })
         if (validationErrors.length > 0) {
-          return res.status(400).json({ error: 'Validation failed', errors: validationErrors })
+          return res.status(400).json({ error: validationErrors.join(' · '), errors: validationErrors })
         }
 
         // ✅ FIX: Get the correct artist_id from the artists table
@@ -723,12 +701,9 @@ export default async function handler(req, res) {
           }
         }
 
-        // ✅ CRITICAL: Ensure user_id and artist_id are properly linked
-        const body = { ...req.body, user_id: user.id, artist_id: artistId }
-
-        // Champs réservés au serveur : un artiste ne peut ni s'approuver, ni fixer l'identifiant de certification
-        for (const field of PROTECTED_ARTWORK_FIELDS) delete body[field]
-        body.status = 'pending'
+        // Propriétaire et statut fixés par le serveur : un artiste ne peut ni s'approuver, ni fixer
+        // l'identifiant de certification, ni se déclarer vendeur d'une œuvre déjà « vendue »
+        const body = { ...artworkInput, user_id: user.id, artist_id: artistId, status: 'pending' }
 
         // ✅ CRITICAL: Sanitize HTML fields to prevent XSS
         if (body.description) {
@@ -738,11 +713,9 @@ export default async function handler(req, res) {
         const { data, error } = await supabaseAdmin.from('artworks').insert([body]).select()
 
         if (error) {
-          console.error('[POST /api/artworks] Insert error:', error.message)
-          if (error.code === '23505') {
-            return res.status(409).json({ error: 'This artwork already exists' })
-          }
-          return res.status(500).json({ error: 'Failed to create artwork' })
+          console.error('[POST /api/artworks] Insert error:', error.code, error.message)
+          const mapped = artworkDatabaseError(error)
+          return res.status(mapped.status).json({ error: mapped.message, code: error.code || null })
         }
 
         // ✅ Notify admin of new artwork (non-blocking)
@@ -836,15 +809,10 @@ export default async function handler(req, res) {
         const user = await getAuthUser()
         if (!user) return
 
-        // ✅ DEBUG: Log incoming payload
-        console.log('[PUT /api/artworks/:id] Incoming body keys:', Object.keys(req.body))
-        console.log('[PUT /api/artworks/:id] Incoming body size:', JSON.stringify(req.body).length, 'bytes')
-
-        // ✅ CRITICAL: Validate input
-        const validationErrors = validateArtwork(req.body)
+        // Liste blanche + conversion des types (mise à jour partielle)
+        const { data: artworkInput, errors: validationErrors } = normalizeArtworkInput(req.body, { partial: true })
         if (validationErrors.length > 0) {
-          console.log('[PUT /api/artworks/:id] Validation failed:', validationErrors)
-          return res.status(400).json({ error: 'Validation failed', errors: validationErrors })
+          return res.status(400).json({ error: validationErrors.join(' · '), errors: validationErrors })
         }
 
         // ✅ CRITICAL: Verify ownership
@@ -862,12 +830,11 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: 'You can only edit your own artworks' })
         }
 
-        // ✅ Prevent user from changing user_id (ownership spoofing)
-        const body = { ...req.body }
-        delete body.user_id
-        delete body.artist_id
-        // Champs réservés au serveur (modération, certification, identifiants)
-        for (const field of PROTECTED_ARTWORK_FIELDS) delete body[field]
+        // Seuls les champs de la liste blanche sont modifiables (ni propriétaire, ni statut, ni certification)
+        const body = { ...artworkInput }
+        if (!Object.keys(body).length) {
+          return res.status(400).json({ error: 'Nothing to update' })
+        }
 
         // ✅ CRITICAL: Sanitize HTML fields to prevent XSS
         if (body.description) {
@@ -881,8 +848,9 @@ export default async function handler(req, res) {
           .select()
 
         if (error) {
-          console.error('[PUT /api/artworks/:id] Update error:', error.message)
-          return res.status(500).json({ error: 'Failed to update artwork' })
+          console.error('[PUT /api/artworks/:id] Update error:', error.code, error.message)
+          const mapped = artworkDatabaseError(error)
+          return res.status(mapped.status).json({ error: mapped.message.replace('Failed to save', 'Failed to update'), code: error.code || null })
         }
 
         return res.status(200).json({

@@ -22,8 +22,9 @@ beforeAll(async () => {
   }
   const trialEnd = new Date(Date.now() + 14 * 864e5).toISOString()
   db.tables.subscriptions = [users.curator, users.advisor].map((u) => ({ id: `s-${u.id}`, user_id: u.id, status: 'trial', is_trial: true, end_date: trialEnd }))
-  db.tables.artists = [{ id: 'art-1', user_id: users.artist.id, name: 'Test Artiste', country: 'SN' }]
-  const base = { for_sale: true, sold: false, price: 100000, currency: 'XOF', user_id: users.artist.id, artist_id: 'art-1', created_at: new Date().toISOString() }
+  const ARTIST_ROW_ID = '00000000-0000-4000-8000-0000000a0001'
+  db.tables.artists = [{ id: ARTIST_ROW_ID, user_id: users.artist.id, name: 'Test Artiste', country: 'SN' }]
+  const base = { for_sale: true, sold: false, price: 100000, currency: 'XOF', user_id: users.artist.id, artist_id: ARTIST_ROW_ID, created_at: new Date().toISOString() }
   db.tables.artworks = [
     { id: 'w-pending', title: 'En attente', status: 'pending', ...base },
     { id: 'w-approved', title: 'Approuvée', status: 'approved', kucibok_id: 'KCB-00000001', ...base },
@@ -149,6 +150,48 @@ describe('Parcours métier dans le navigateur', () => {
     await page.getByRole('button', { name: 'Webhooks reçus' }).click()
     await page.waitForTimeout(500)
     expect(problems.pageErrors).toEqual([])
+    await page.context().close()
+  })
+
+  it('artiste (mobile) : remplit les 4 étapes et soumet une œuvre -> enregistrée « pending » en base', async () => {
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+    const { page, problems } = await h.newPage(users.artist, { viewport: { width: 390, height: 844 } })
+    const before = h.db.tables.artworks.length
+    await page.goto(h.origin + '/dashboard/artist/submit-artwork', { waitUntil: 'networkidle' })
+
+    // Étape 1 : informations
+    await page.getByPlaceholder("Titre de l'oeuvre").fill('Labyrinthe des sens')
+    await page.locator('.ql-editor').click()
+    await page.keyboard.type('Labyrinthe des sens')
+    await page.getByPlaceholder('Hauteur (cm)').fill('130')
+    await page.getByPlaceholder('Largeur (cm)').fill('80')
+    await page.getByPlaceholder('Poids (kg)').fill('3')
+    await page.getByPlaceholder('Ajoutez des mots-clés').fill('Zéro neuf')
+    await page.getByRole('button', { name: 'Ajouter mot-clé' }).click()
+    await page.getByRole('button', { name: 'Suivant' }).click()
+
+    // Étape 2 : image
+    await page.locator('#artwork-image').setInputFiles({ name: 'labyrinthe.png', mimeType: 'image/png', buffer: PNG })
+    await page.getByRole('button', { name: 'Suivant' }).click()
+
+    // Étape 3 : prix
+    await page.getByPlaceholder("Entrez le prix de l'oeuvre").fill('500000')
+    await page.getByRole('button', { name: 'Suivant' }).click()
+
+    // Étape 4 : vérification et envoi
+    await page.getByText('Vérifiez votre soumission').waitFor({ timeout: 8000 })
+    await page.getByRole('button', { name: 'Soumettre' }).click()
+    await page.waitForURL('**/dashboard/artist', { timeout: 15000 })
+
+    const created = h.db.tables.artworks.slice(before)
+    expect(created).toHaveLength(1)
+    expect(created[0]).toMatchObject({
+      title: 'Labyrinthe des sens', status: 'pending', user_id: users.artist.id, price: 500000, currency: 'XOF',
+      height: 130, width: 80, weight: 3, tags: ['Zéro neuf'], for_sale: true,
+    })
+    expect(created[0].image).toMatch(/^https:\/\//)
+    expect(problems.pageErrors).toEqual([])
+    expect(problems.apiErrors.filter((e) => e.includes('/artworks'))).toEqual([])
     await page.context().close()
   })
 })
