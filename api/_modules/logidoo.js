@@ -99,19 +99,22 @@ export async function logidooRequest(cfg, method, path, { query, body, timeoutMs
 
 const enc = encodeURIComponent
 
-/** Fonctions métier : un appel par endpoint documenté. */
-export const createLogidooClient = (cfg = logidooConfig()) => ({
-  config: cfg,
-  listNodes: (countryCode) => logidooRequest(cfg, 'GET', '/node', { query: { countryCode } }),
-  getNode: (id) => logidooRequest(cfg, 'GET', `/node/${enc(id)}`),
-  listCarriers: () => logidooRequest(cfg, 'GET', '/carrier'),
-  listExpeditions: (query) => logidooRequest(cfg, 'GET', '/expedition', { query }),
-  getExpedition: (id) => logidooRequest(cfg, 'GET', `/expedition/${enc(id)}`),
-  createExpedition: (payload) => logidooRequest(cfg, 'POST', '/expedition', { body: payload }),
-  cancelExpedition: (id) => logidooRequest(cfg, 'DELETE', `/expedition/${enc(id)}`),
-  listOperations: (query) => logidooRequest(cfg, 'GET', '/operations', { query }),
-  getTracking: (trackingNumber) => logidooRequest(cfg, 'GET', `/expedition-tracking/${enc(trackingNumber)}`),
-})
+/** Fonctions métier : un appel par endpoint documenté. `timeoutMs` s'applique à chaque appel. */
+export const createLogidooClient = (cfg = logidooConfig(), { timeoutMs } = {}) => {
+  const call = (method, path, options = {}) => logidooRequest(cfg, method, path, { ...options, ...(timeoutMs ? { timeoutMs } : {}) })
+  return {
+    config: cfg,
+    listNodes: (countryCode) => call('GET', '/node', { query: { countryCode } }),
+    getNode: (id) => call('GET', `/node/${enc(id)}`),
+    listCarriers: () => call('GET', '/carrier'),
+    listExpeditions: (query) => call('GET', '/expedition', { query }),
+    getExpedition: (id) => call('GET', `/expedition/${enc(id)}`),
+    createExpedition: (payload) => call('POST', '/expedition', { body: payload }),
+    cancelExpedition: (id) => call('DELETE', `/expedition/${enc(id)}`),
+    listOperations: (query) => call('GET', '/operations', { query }),
+    getTracking: (trackingNumber) => call('GET', `/expedition-tracking/${enc(trackingNumber)}`),
+  }
+}
 
 /** Traduit une erreur Logidoo en réponse HTTP exploitable par l'interface. */
 export const logidooErrorResponse = (err) => {
@@ -160,7 +163,11 @@ const MAX_WEBHOOK_BYTES = 100_000
  *   GET  webhooks           derniers webhooks reçus (admin)
  * Renvoie true quand la requête a reçu une réponse.
  */
-export async function handleLogidooRoutes({ req, res, path, supabaseAdmin, adminOnly, client = createLogidooClient() }) {
+// Une Vercel Function s'arrête à 10 s : chaque diagnostic doit se terminer avant, authentification comprise.
+const STATUS_TIMEOUT_MS = 7000
+const PROBE_TIMEOUT_MS = 6000
+
+export async function handleLogidooRoutes({ req, res, path, supabaseAdmin, adminOnly, client = createLogidooClient(), statusTimeoutMs = STATUS_TIMEOUT_MS, probeTimeoutMs = PROBE_TIMEOUT_MS }) {
   const [, , action] = path // logistics / logidoo / <action>
   const method = req.method
   const send = (status, body) => { res.status(status).json(body); return true }
@@ -190,12 +197,22 @@ export async function handleLogidooRoutes({ req, res, path, supabaseAdmin, admin
       webhook: { configured: Boolean(process.env.LOGIDOO_WEBHOOK_SECRET) },
     }
     if (req.query?.check === '1') {
+      // Endpoint testé au choix (liste blanche) : permet d'isoler un endpoint lent
+      const endpoint = String(req.query?.endpoint || 'node')
+      const checks = {
+        node: (c) => c.listNodes(String(req.query?.country || 'SN').slice(0, 2).toUpperCase()),
+        carrier: (c) => c.listCarriers(),
+        expedition: (c) => c.listExpeditions(),
+        operations: (c) => c.listOperations(),
+      }
+      if (!(endpoint in checks)) return send(400, { success: false, error: `endpoint invalide. Valeurs : ${Object.keys(checks).join(', ')}` })
+      const timed = createLogidooClient(cfg, { timeoutMs: statusTimeoutMs })
       const startedAt = Date.now()
       try {
-        await client.listNodes(req.query?.country || 'SN')
-        status.check = { ok: true, latencyMs: Date.now() - startedAt }
+        await checks[endpoint](timed)
+        status.check = { ok: true, endpoint, latencyMs: Date.now() - startedAt }
       } catch (err) {
-        status.check = { ok: false, latencyMs: Date.now() - startedAt, ...logidooErrorResponse(err), httpStatus: err?.status || null }
+        status.check = { ok: false, endpoint, latencyMs: Date.now() - startedAt, ...logidooErrorResponse(err), httpStatus: err?.status || null }
       }
     }
     return send(200, { success: true, ...status })
@@ -204,22 +221,26 @@ export async function handleLogidooRoutes({ req, res, path, supabaseAdmin, admin
   if (method === 'GET' && action === 'probe') {
     const country = String(req.query?.country || 'SN').slice(0, 2).toUpperCase()
     const trackingNumber = req.query?.trackingNumber ? String(req.query.trackingNumber).slice(0, 80) : null
+    const quick = createLogidooClient(client.config, { timeoutMs: probeTimeoutMs })
     const calls = {
-      [`GET /node?countryCode=${country}`]: () => client.listNodes(country),
-      'GET /carrier': () => client.listCarriers(),
-      'GET /expedition': () => client.listExpeditions(),
-      'GET /operations': () => client.listOperations(),
-      ...(trackingNumber ? { 'GET /expedition-tracking/{trackingNumber}': () => client.getTracking(trackingNumber) } : {}),
+      [`GET /node?countryCode=${country}`]: () => quick.listNodes(country),
+      'GET /carrier': () => quick.listCarriers(),
+      'GET /expedition': () => quick.listExpeditions(),
+      'GET /operations': () => quick.listOperations(),
+      ...(trackingNumber ? { 'GET /expedition-tracking/{trackingNumber}': () => quick.getTracking(trackingNumber) } : {}),
     }
     if (!client.config.configured) return send(503, { success: false, error: logidooErrorResponse(new LogidooError('', { code: 'NOT_CONFIGURED' })).error })
-    const results = {}
-    for (const [label, run] of Object.entries(calls)) {
+    // En parallèle : le temps total reste celui du plus lent, sous la limite de 10 s de la fonction
+    const entries = Object.entries(calls)
+    const outcomes = await Promise.all(entries.map(async ([, run]) => {
+      const startedAt = Date.now()
       try {
-        results[label] = { ok: true, shape: describeShape(await run()) }
+        return { ok: true, latencyMs: Date.now() - startedAt, shape: describeShape(await run()) }
       } catch (err) {
-        results[label] = { ok: false, httpStatus: err?.status || null, ...logidooErrorResponse(err) }
+        return { ok: false, latencyMs: Date.now() - startedAt, httpStatus: err?.status || null, ...logidooErrorResponse(err) }
       }
-    }
+    }))
+    const results = Object.fromEntries(entries.map(([label], i) => [label, outcomes[i]]))
     return send(200, { success: true, environment: client.config.mode, note: 'Formes seulement : aucune valeur personnelle n’est renvoyée', results })
   }
 

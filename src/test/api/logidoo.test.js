@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { loadApi } from './helpers'
-import { logidooConfig, logidooRequest, createLogidooClient, describeShape, LogidooError } from '../../../api/_modules/logidoo.js'
+import { makeRes } from './fakeSupabase'
+import { logidooConfig, logidooRequest, createLogidooClient, describeShape, handleLogidooRoutes, LogidooError } from '../../../api/_modules/logidoo.js'
 
 const TOKEN = 'tok_SECRET_123'
 const STAGING = 'https://staging-expedition.logidoo.co/api/v1'
@@ -258,3 +259,57 @@ describe('Routes /api/logistics/logidoo', () => {
     }
   })
 })
+
+describe('Diagnostic Logidoo : rapide même quand l’API ne répond pas (limite de 10 s des fonctions Vercel)', () => {
+  const cfg = logidooConfig({ LOGIDOO_API_KEY: TOKEN })
+  /** fetch dont certains chemins restent bloqués jusqu'à l'abandon par le délai. */
+  const stubSlow = (hangingPaths) => {
+    vi.stubGlobal('fetch', vi.fn((url, init) => {
+      if (hangingPaths.some((p) => String(url).includes(p))) {
+        return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))))
+      }
+      return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify([{ id: 1, status: 'ACTIVE' }]) })
+    }))
+  }
+  const run = async (query, extra = {}) => {
+    const res = makeRes()
+    const started = Date.now()
+    await handleLogidooRoutes({
+      req: { method: 'GET', query, headers: {} }, res, path: ['logistics', 'logidoo', query.__action],
+      supabaseAdmin: {}, adminOnly: () => false, client: createLogidooClient(cfg), ...extra,
+    })
+    return { body: res.body, status: res.statusCode, elapsed: Date.now() - started }
+  }
+
+  it('probe : les appels partent en parallèle (temps total ≈ un seul délai) et chaque endpoint a son résultat', async () => {
+    stubSlow(['/node', '/carrier', '/expedition?', '/expedition'])
+    const { body, elapsed } = await run({ __action: 'probe' }, { probeTimeoutMs: 60 })
+    expect(elapsed).toBeLessThan(150) // en série : au moins 4 × 60 ms
+    const entries = Object.entries(body.results)
+    expect(entries).toHaveLength(4)
+    for (const [label, result] of entries) {
+      if (label === 'GET /operations') expect(result).toMatchObject({ ok: true, latencyMs: expect.any(Number) })
+      else expect(result, label).toMatchObject({ ok: false, status: 504, latencyMs: expect.any(Number), error: expect.stringMatching(/n'a pas répondu/) })
+    }
+  })
+
+  it('probe : un endpoint qui bloque n’empêche pas de lire les autres', async () => {
+    stubSlow(['/node'])
+    const { body } = await run({ __action: 'probe' }, { probeTimeoutMs: 40 })
+    expect(body.results['GET /node?countryCode=SN'].ok).toBe(false)
+    expect(body.results['GET /carrier'].ok).toBe(true)
+    expect(body.results['GET /carrier'].shape.type).toBe('array')
+  })
+
+  it('status : endpoint testé au choix, délai borné, latence mesurée', async () => {
+    stubSlow(['/node'])
+    const slow = await run({ __action: 'status', check: '1' }, { statusTimeoutMs: 40 })
+    expect(slow.body.check).toMatchObject({ ok: false, endpoint: 'node', status: 504 })
+    expect(slow.elapsed).toBeLessThan(500)
+    const carrier = await run({ __action: 'status', check: '1', endpoint: 'carrier' }, { statusTimeoutMs: 40 })
+    expect(carrier.body.check).toMatchObject({ ok: true, endpoint: 'carrier' })
+    const invalid = await run({ __action: 'status', check: '1', endpoint: 'expedition/../admin' })
+    expect(invalid.status).toBe(400)
+  })
+})
+
