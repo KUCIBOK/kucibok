@@ -9,7 +9,7 @@ import { requireAuth } from './_lib/auth.js'
 import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
 import { handleExtraRoutes, createNotifier } from './_modules/extra-routes.js'
-import { handleLogidooRoutes } from './_modules/logidoo.js'
+import { handleLogidooRoutes, createLogidooClient, logidooConfig, logidooErrorResponse, listPickupPoints } from './_modules/logidoo.js'
 import { normalizeArtworkInput, artworkDatabaseError } from './_modules/artwork-input.js'
 import DOMPurify from 'dompurify'
 import PDFDocument from 'pdfkit'
@@ -3995,7 +3995,6 @@ export default async function handler(req, res) {
         }
         const NOT_AVAILABLE = {
           zones: "Logidoo n'expose pas de zones tarifées : utiliser les points de dépôt par pays (pickup-points)",
-          'pickup-points': "Points de dépôt Logidoo : le schéma de la réponse /node n'est pas documenté, mapping en attente (lancer « Tester Logidoo » dans l'onglet Logistique)",
           rates: "Logidoo ne propose pas de devis séparé : le coût est renvoyé à la création de l'expédition",
           update: "Mise à jour de statut Logidoo : vocabulaire des statuts et contenu des webhooks à confirmer (voir les webhooks reçus dans l'onglet Logistique)",
         }
@@ -4046,8 +4045,28 @@ export default async function handler(req, res) {
           return res.status(200).json({ success: true })
         }
 
-        // Données fournies par Logidoo (zones, tarifs, points relais, mise à jour) : non branché
-        if ((req.method === 'GET' && (s1 === 'zones' || s1 === 'pickup-points')) ||
+        // GET /api/logistics/pickup-points?countryCode=SN — points de dépôt Logidoo du pays (lecture seule)
+        if (req.method === 'GET' && s1 === 'pickup-points') {
+          const countryCode = String(req.query?.countryCode || 'SN').trim().toUpperCase()
+          if (!/^[A-Z]{2}$/.test(countryCode)) {
+            return res.status(400).json({ success: false, error: 'countryCode doit être un code pays à 2 lettres (ex. SN, CI, ML)' })
+          }
+          const cfg = logidooConfig()
+          if (!cfg.configured) {
+            const unavailable = logidooErrorResponse({ code: 'NOT_CONFIGURED' })
+            return res.status(unavailable.status).json({ success: false, error: unavailable.error })
+          }
+          try {
+            const pickupPoints = await listPickupPoints(createLogidooClient(cfg, { timeoutMs: 7000 }), countryCode)
+            return res.status(200).json({ success: true, countryCode, count: pickupPoints.length, pickupPoints })
+          } catch (err) {
+            const failure = logidooErrorResponse(err)
+            return res.status(failure.status).json({ success: false, error: failure.error })
+          }
+        }
+
+        // Données fournies par Logidoo (zones, tarifs, mise à jour) : non branchées
+        if ((req.method === 'GET' && s1 === 'zones') ||
             (req.method === 'POST' && s1 === 'rates') ||
             (req.method === 'PUT' && s1 === 'update')) {
           return res.status(501).json({ success: false, error: `Intégration Logidoo : ${NOT_AVAILABLE[s1]}` })

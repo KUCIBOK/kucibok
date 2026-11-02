@@ -153,8 +153,8 @@ describe('/api/logistics', () => {
       expect((await call({ url: '/api/delivery' })).statusCode).toBe(401)
     })
 
-    it('zones, tarifs, points relais : 501 explicite tant que Logidoo n’est pas branché (pas de données inventées)', async () => {
-      for (const [method, url] of [['GET', '/api/logistics/zones'], ['GET', '/api/logistics/pickup-points'], ['POST', '/api/logistics/rates'], ['PUT', '/api/logistics/update/KCB-TRK-X']]) {
+    it('zones, tarifs, mise à jour : 501 explicite tant que Logidoo n’est pas branché (pas de données inventées)', async () => {
+      for (const [method, url] of [['GET', '/api/logistics/zones'], ['POST', '/api/logistics/rates'], ['PUT', '/api/logistics/update/KCB-TRK-X']]) {
         const res = await call({ method, url, token: curator.token, body: {} })
         expect(res.statusCode, `${method} ${url}`).toBe(501)
         expect(res.body.error).toMatch(/Logidoo/)

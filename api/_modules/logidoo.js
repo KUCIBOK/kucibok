@@ -116,6 +116,28 @@ export const createLogidooClient = (cfg = logidooConfig(), { timeoutMs } = {}) =
   }
 }
 
+/**
+ * Points de dépôt / prise en charge d'un pays, au format attendu par l'interface.
+ * Schéma relevé sur l'API réelle : GET /node?countryCode=SN -> { data: [{ _id, name, region, city, countryCode }], count }
+ */
+export async function listPickupPoints(client, countryCode) {
+  const body = await client.listNodes(countryCode)
+  const nodes = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : []
+  const pickupPoints = nodes
+    .filter((node) => node && node._id && node.name)
+    .map((node) => ({
+      id: node._id,
+      name: node.name,
+      city: node.city || null,
+      region: node.region || null,
+      countryCode: node.countryCode || countryCode,
+      // L'interface utilise `address` comme adresse de remise quand aucune adresse n'est saisie
+      address: [node.name, node.city, node.region].filter(Boolean).join(', '),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+  return pickupPoints
+}
+
 /** Traduit une erreur Logidoo en réponse HTTP exploitable par l'interface. */
 export const logidooErrorResponse = (err) => {
   if (err?.code === 'NOT_CONFIGURED') return { status: 503, error: 'Intégration Logidoo non configurée : LOGIDOO_API_KEY manquante côté serveur' }
