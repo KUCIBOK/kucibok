@@ -1,3 +1,4 @@
+import { DeliveryTab } from '../../components/delivery/DeliveryTab'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
@@ -12,6 +13,7 @@ import {
   LayoutDashboard,
   Settings,
   Heart,
+  Truck,
 } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
 import { useLang } from '../../store/LangContext'
@@ -58,7 +60,10 @@ export default function Advisor() {
     {
       category: td.categories.tools,
       icon: <FileText className="w-4 h-4" />,
-      items: [{ name: td.items.reports, icon: <FileText className="w-4 h-4" />, index: 4 }],
+      items: [
+        { name: td.items.reports, icon: <FileText className="w-4 h-4" />, index: 4 },
+        { name: 'Expéditions', icon: <Truck className="w-4 h-4" />, index: 9 },
+      ],
     },
     {
       category: td.categories.account,
@@ -94,6 +99,8 @@ export default function Advisor() {
         return <MyShortlist />
       case 4:
         return <AdvisorReports />
+      case 9:
+        return <DeliveryTab />
       case 5:
         return <Profile />
       case 6:
