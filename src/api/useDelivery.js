@@ -142,3 +142,21 @@ export async function deleteDelivery(id) {
     return { error: err.message }
   }
 }
+
+/**
+ * POST /api/logistics/expeditions/:id/validate — L'admin valide la demande : l'expédition est créée
+ * chez Logidoo, le coût et le suivi sont enregistrés, le demandeur est prévenu.
+ *
+ * @param {string} id
+ * @returns {Promise<object | { error: string, missing?: string[] }>}
+ */
+export async function validateDelivery(id) {
+  try {
+    const response = await fetch(`${api}/logistics/expeditions/${id}/validate`, { ...utils.options, method: 'POST' })
+    const body = await response.json()
+    if (!response.ok) return { error: body?.error || 'Erreur serveur', missing: body?.missing }
+    return body?.expedition ?? body
+  } catch (err) {
+    return { error: err.message }
+  }
+}

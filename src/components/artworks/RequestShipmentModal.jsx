@@ -2,7 +2,20 @@ import { useState } from 'react'
 import { X, Truck, Package, CheckCircle, Loader2 } from 'lucide-react'
 import { useDelivery } from '../../store/DeliveryStore'
 
-const ORIGIN_COUNTRIES = ['Sénégal', "Côte d'Ivoire", 'Bénin', 'Nigeria', 'France']
+import { listCountries } from '../../../api/_modules/countries.js'
+
+// Tous les pays du monde (ISO 3166-1), noms en français
+const COUNTRIES = listCountries('fr')
+const TRANSPORT_MODES = [
+  { value: 'AIR', label: 'Aérien (recommandé)' },
+  { value: 'SEA', label: 'Maritime' },
+  { value: 'LAND', label: 'Routier' },
+]
+const TRANSPORT_TYPES = [
+  { value: 'EXPRESS', label: 'Express (recommandé)' },
+  { value: 'FRET', label: 'Fret' },
+  { value: 'GROUPAGE', label: 'Groupage' },
+]
 
 const PACKAGING_ITEMS = [
   { key: 'museum_wrap', label: 'Emballage muséal (papier de soie + film)' },
@@ -15,6 +28,15 @@ const PACKAGING_ITEMS = [
 const initialForm = {
   corridor: 'AF_TO_FR',
   originCountry: '',
+  originCountryCode: '',
+  destinationCountry: '',
+  destinationCountryCode: '',
+  transportMode: 'AIR',
+  transportType: 'EXPRESS',
+  senderPhone: '',
+  senderAddress: '',
+  recipientEmail: '',
+  goodsValue: '',
   deliveryAddress: '',
   recipientName: '',
   recipientPhone: '',
@@ -42,6 +64,10 @@ export function RequestShipmentModal({ artwork, isOpen, onClose }) {
   if (!isOpen) return null
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }))
+  const setCountry = (field, code) => {
+    const name = COUNTRIES.find((c) => c.code === code)?.name || ''
+    setForm((prev) => ({ ...prev, [`${field}Code`]: code, [field]: name }))
+  }
   const setChecklist = (key, value) =>
     setForm((prev) => ({
       ...prev,
@@ -50,7 +76,7 @@ export function RequestShipmentModal({ artwork, isOpen, onClose }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!form.originCountry || !form.deliveryAddress || !form.recipientName || !form.recipientPhone)
+    if (!form.originCountryCode || !form.destinationCountryCode || !form.deliveryAddress || !form.recipientName || !form.recipientPhone)
       return
     setLoading(true)
     const payload = {
@@ -94,8 +120,9 @@ export function RequestShipmentModal({ artwork, isOpen, onClose }) {
             <h3 className="text-white font-semibold text-xl mb-2">Demande envoyée !</h3>
             <p className="text-kcb-pierre text-sm mb-6">
               Votre demande d'expédition pour{' '}
-              <strong className="text-white">{artwork.title}</strong> a été soumise. L'équipe
-              Kucibok vous contactera sous 48h avec un devis.
+              <strong className="text-white">{artwork.title}</strong> a été soumise. Elle reste
+              en attente de validation par l'équipe Kucibok ; vous serez notifié avec le coût et le
+              numéro de suivi dès la création de l'expédition.
             </p>
             {typeof success === 'string' && success.length > 10 && (
               <div className="bg-kcb-ardoise border border-kcb-or/30 rounded-[4px] p-4 mb-6">
@@ -143,24 +170,87 @@ export function RequestShipmentModal({ artwork, isOpen, onClose }) {
               </select>
             </div>
 
-            {/* Pays d'origine */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-kcb-pierre font-medium">
-                Pays d'origine <span className="text-red-400">*</span>
-              </label>
-              <select
-                required
-                value={form.originCountry}
-                onChange={(e) => set('originCountry', e.target.value)}
-                className="rounded-[4px] bg-kcb-ardoise border border-white/[0.06] p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-kcb-or"
-              >
-                <option value="">Sélectionner…</option>
-                {ORIGIN_COUNTRIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+            {/* Pays de départ et d'arrivée : tous les pays du monde */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                ['originCountry', 'Pays de départ'],
+                ['destinationCountry', "Pays d'arrivée"],
+              ].map(([field, label]) => (
+                <div key={field} className="flex flex-col gap-1">
+                  <label className="text-xs text-kcb-pierre font-medium">
+                    {label} <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    required
+                    value={form[`${field}Code`]}
+                    onChange={(e) => setCountry(field, e.target.value)}
+                    className="rounded-[4px] bg-kcb-ardoise border border-white/[0.06] p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-kcb-or"
+                  >
+                    <option value="">Sélectionner…</option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {/* Transport : aérien + express par défaut */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-kcb-pierre font-medium">Mode de transport</label>
+                <select
+                  value={form.transportMode}
+                  onChange={(e) => set('transportMode', e.target.value)}
+                  className="rounded-[4px] bg-kcb-ardoise border border-white/[0.06] p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-kcb-or"
+                >
+                  {TRANSPORT_MODES.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-kcb-pierre font-medium">Type d'envoi</label>
+                <select
+                  value={form.transportType}
+                  onChange={(e) => set('transportType', e.target.value)}
+                  className="rounded-[4px] bg-kcb-ardoise border border-white/[0.06] p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-kcb-or"
+                >
+                  {TRANSPORT_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Expéditeur */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-kcb-pierre font-medium">
+                  Votre téléphone <span className="text-red-400">*</span>
+                </label>
+                <input
+                  required
+                  value={form.senderPhone}
+                  onChange={(e) => set('senderPhone', e.target.value)}
+                  className="rounded-[4px] bg-kcb-ardoise border border-white/[0.06] p-2 text-sm text-white placeholder-kcb-pierre focus:outline-none focus:ring-2 focus:ring-kcb-or"
+                  placeholder="+221 77 000 00 00"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-kcb-pierre font-medium">
+                  Adresse de collecte <span className="text-red-400">*</span>
+                </label>
+                <input
+                  required
+                  value={form.senderAddress}
+                  onChange={(e) => set('senderAddress', e.target.value)}
+                  className="rounded-[4px] bg-kcb-ardoise border border-white/[0.06] p-2 text-sm text-white placeholder-kcb-pierre focus:outline-none focus:ring-2 focus:ring-kcb-or"
+                  placeholder="Almadies, Dakar"
+                />
+              </div>
             </div>
 
             {/* Destinataire */}
