@@ -1,3 +1,4 @@
+import { trackSignUp } from '../lib/analytics'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -189,6 +190,23 @@ export function AuthContextProvider({ children }) {
         }
 
         if (event === 'SIGNED_IN' && kcbUser) {
+          // Inscription Google : compte créé à l'instant (première connexion = date de création).
+          // Une seule fois par compte, même si l'événement SIGNED_IN se répète.
+          const created = Date.parse(session.user.created_at)
+          const lastSignIn = Date.parse(session.user.last_sign_in_at)
+          if (
+            session.user.app_metadata?.provider === 'google' &&
+            Number.isFinite(created) && Number.isFinite(lastSignIn) &&
+            Math.abs(lastSignIn - created) < 60000
+          ) {
+            try {
+              const key = `kcb_signup_tracked_${kcbUser._id}`
+              if (!localStorage.getItem(key)) {
+                localStorage.setItem(key, '1')
+                trackSignUp('google')
+              }
+            } catch { /* stockage indisponible : on ne mesure pas plutôt que de compter en double */ }
+          }
           await loadProfile(kcbUser)
           await loadSubscription()
           createLog({

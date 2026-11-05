@@ -1,3 +1,4 @@
+import { trackSignUp } from '../lib/analytics'
 import { supabase } from '../lib/supabase'
 import { uploadProfileImage } from '../lib/storage'
 import { utils } from './useAPI'
@@ -104,6 +105,7 @@ export async function SignUpUser(charge) {
       if (!uploadResult.error) imageUrl = uploadResult.url
     }
 
+    trackSignUp('email')
     return {
       user: { _id: userId, id: userId, email, role, name },
       imageUrl,
