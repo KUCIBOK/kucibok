@@ -8,7 +8,7 @@ import { respondJSON, respondError, checkAuth } from './_lib/response.js'
 import { requireAuth } from './_lib/auth.js'
 import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
-import { validateAndCreateExpedition, syncLogidooStatuses, cancelAtLogidoo } from './_modules/logidoo-expedition.js'
+import { normalizeTransport, validateAndCreateExpedition, syncLogidooStatuses, cancelAtLogidoo } from './_modules/logidoo-expedition.js'
 import { handleExtraRoutes, createNotifier } from './_modules/extra-routes.js'
 import { handleLogidooRoutes, createLogidooClient, logidooConfig, logidooErrorResponse, listPickupPoints } from './_modules/logidoo.js'
 import { normalizeArtworkInput, artworkDatabaseError } from './_modules/artwork-input.js'
@@ -262,8 +262,11 @@ export default async function handler(req, res) {
     }
     // Crée une expédition (demande de livraison suivie) ; œuvres facultatives mais contrôlées
     const createExpedition = async (user, payload) => {
-      const { recipient = {}, package: pkg = {}, serviceType, collectionDate, deliveryDate, specialInstructions, artwork_ids, zone } = payload || {}
+      const { recipient = {}, package: pkg = {}, serviceType, collectionDate, deliveryDate, specialInstructions, artwork_ids, zone, destination_country_code, origin_country_code, sender_phone, sender_address } = payload || {}
       if (!recipient.name || !recipient.phone) return { status: 400, error: 'recipient.name and recipient.phone are required' }
+      const transport = normalizeTransport(payload || {})
+      if (transport.error) return { status: 400, error: transport.error }
+      const countryCode = (value) => (/^[A-Za-z]{2}$/.test(value || '') ? value.toUpperCase() : null)
       const ids = [...new Set(Array.isArray(artwork_ids) ? artwork_ids : [])]
       if (ids.length) {
         const { data: owned, error: ownedError } = await supabaseAdmin.from('artworks').select('id, user_id, owner_id').in('id', ids)
@@ -285,7 +288,15 @@ export default async function handler(req, res) {
           delivery_priority: String(serviceType || 'standard').toLowerCase(),
           collect_date: collectionDate || null,
           delivery_date: deliveryDate || null,
-          special_instructions: specialInstructions || zone || null,
+          special_instructions: specialInstructions || null,
+          destination_country: zone || null,
+          origin_country_code: countryCode(origin_country_code),
+          transport_mode: transport.mode,
+          transport_type: transport.type,
+          sender_email: user.email || null,
+          sender_phone: sender_phone || null,
+          sender_address: sender_address || null,
+          destination_country_code: /^[A-Za-z]{2}$/.test(destination_country_code || '') ? destination_country_code.toUpperCase() : null,
         })
         .select()
         .single()

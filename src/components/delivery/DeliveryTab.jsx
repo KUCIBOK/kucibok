@@ -11,7 +11,6 @@ import {
   Phone,
   User,
   Calendar,
-  Calculator,
   Loader,
   AlertCircle,
   Check,
@@ -20,22 +19,22 @@ import {
 import { useDelivery } from '../../store/DeliveryStore'
 import { useLogistics } from '../../hooks/useLogistics'
 import { CustomsSimulator } from './CustomsSimulator'
+import { listCountries } from '../../../api/_modules/countries.js'
+
+// Tous les pays du monde, disponibles immédiatement (aucun chargement réseau)
+const COUNTRIES = listCountries('fr')
 
 export function DeliveryTab() {
   const { myDeliveries } = useDelivery()
   const {
-    getDeliveryZones,
     getPickupPoints,
-    getShippingRates,
     createExpedition,
     syncWithLogidoo,
     loading: logisticsLoading,
     error: logisticsError,
   } = useLogistics()
 
-  const [zones, setZones] = useState([])
   const [pickupPoints, setPickupPoints] = useState([])
-  const [rates, setRates] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState('')
 
@@ -54,30 +53,26 @@ export function DeliveryTab() {
     deliveryPriority: 'standard',
     selectedZone: '',
     selectedPickupPoint: '',
+    originCountryCode: 'SN',
+    senderPhone: '',
+    senderAddress: '',
+    transportMode: 'AIR',
+    transportType: 'EXPRESS',
   })
 
   const [formError, setFormError] = useState('')
   const [formLoading, setFormLoading] = useState(false)
   const [formSuccess, setFormSuccess] = useState('')
 
-  // Load Logidoo data on mount
-  useEffect(() => {
-    loadLogidooData()
-  }, [])
-
-  const loadLogidooData = async () => {
+  // Points de dépôt Logidoo du pays choisi (facultatif : le formulaire fonctionne sans)
+  const loadPickupPoints = async (countryCode) => {
+    setPickupPoints([])
+    if (!countryCode) return
     try {
-      const zonesData = await getDeliveryZones()
-      if (zonesData?.zones) {
-        setZones(zonesData.zones)
-      }
-
-      const pickupData = await getPickupPoints()
-      if (pickupData?.pickupPoints) {
-        setPickupPoints(pickupData.pickupPoints)
-      }
-    } catch (error) {
-      // Loading failed silently
+      const pickupData = await getPickupPoints(countryCode)
+      setPickupPoints(pickupData?.pickupPoints || [])
+    } catch {
+      setPickupPoints([])
     }
   }
 
@@ -94,20 +89,6 @@ export function DeliveryTab() {
     setSyncing(false)
   }
 
-  const calculateRate = async () => {
-    if (!formData.selectedZone || !formData.packageWeight || !formData.originCity) return
-
-    try {
-      const rateData = await getShippingRates(formData.originCity, formData.selectedZone, {
-        weight: parseFloat(formData.packageWeight),
-        size: formData.packageSize,
-      })
-      setRates(rateData)
-    } catch (_) {
-      setRates(null)
-    }
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setFormError('')
@@ -120,6 +101,16 @@ export function DeliveryTab() {
 
     if (!formData.collectDate || !formData.deliveryDate) {
       setFormError('Les dates de collecte et livraison sont obligatoires')
+      return
+    }
+
+    if (!formData.selectedZone) {
+      setFormError("Choisissez le pays de livraison")
+      return
+    }
+
+    if (!formData.senderPhone || !formData.senderAddress) {
+      setFormError("Votre téléphone et l'adresse de collecte sont obligatoires")
       return
     }
 
@@ -147,7 +138,13 @@ export function DeliveryTab() {
         deliveryDate: formData.deliveryDate,
         specialInstructions: formData.specialInstructions,
         artwork_ids: formData.artworksIds,
-        zone: formData.selectedZone,
+        zone: COUNTRIES.find((c) => c.code === formData.selectedZone)?.name || formData.selectedZone,
+        destination_country_code: formData.selectedZone,
+        origin_country_code: formData.originCountryCode,
+        sender_phone: formData.senderPhone,
+        sender_address: formData.senderAddress,
+        transportMode: formData.transportMode,
+        transportType: formData.transportType,
       }
 
       const result = await createExpedition(expeditionData)
@@ -168,8 +165,12 @@ export function DeliveryTab() {
           deliveryPriority: 'standard',
           selectedZone: '',
           selectedPickupPoint: '',
+          originCountryCode: 'SN',
+          senderPhone: '',
+          senderAddress: '',
+          transportMode: 'AIR',
+          transportType: 'EXPRESS',
         })
-        setRates(null)
       }
     } catch (error) {
       setFormError(error.message || 'Erreur lors de la création')
@@ -299,22 +300,17 @@ export function DeliveryTab() {
               <select
                 value={formData.selectedZone}
                 onChange={(e) => {
-                  setFormData({ ...formData, selectedZone: e.target.value })
-                  setRates(null)
+                  setFormData({ ...formData, selectedZone: e.target.value, selectedPickupPoint: '' })
+                  loadPickupPoints(e.target.value)
                 }}
                 className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
               >
                 <option value="">Sélectionnez votre destination</option>
-                {zones && zones.length > 0 ? (
-                  zones.map((zone) => (
-                    <option key={zone.id} value={zone.name}>
-                      {zone.region && `[${zone.region}] `}
-                      {zone.name} {zone.price ? `- ${zone.price} XOF` : ''}
-                    </option>
-                  ))
-                ) : (
-                  <option disabled>Chargement des zones...</option>
-                )}
+                {COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -352,6 +348,70 @@ export function DeliveryTab() {
                   onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
                   placeholder="Adresse complète, Ville, Code Postal"
                   className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                />
+              </div>
+            </div>
+
+            {/* Départ, transport et expéditeur */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Pays de départ</label>
+                <select
+                  value={formData.originCountryCode}
+                  onChange={(e) => setFormData({ ...formData, originCountryCode: e.target.value })}
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                >
+                  {COUNTRIES.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Mode de transport</label>
+                <select
+                  value={formData.transportMode}
+                  onChange={(e) => setFormData({ ...formData, transportMode: e.target.value })}
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                >
+                  <option value="AIR">Aérien (recommandé)</option>
+                  <option value="SEA">Maritime</option>
+                  <option value="LAND">Routier</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Type d'envoi</label>
+                <select
+                  value={formData.transportType}
+                  onChange={(e) => setFormData({ ...formData, transportType: e.target.value })}
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                >
+                  <option value="EXPRESS">Express (recommandé)</option>
+                  <option value="FRET">Fret</option>
+                  <option value="GROUPAGE">Groupage</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Votre téléphone</label>
+                <input
+                  type="tel"
+                  value={formData.senderPhone}
+                  onChange={(e) => setFormData({ ...formData, senderPhone: e.target.value })}
+                  placeholder="+221 77 000 00 00"
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Adresse de collecte</label>
+                <input
+                  type="text"
+                  value={formData.senderAddress}
+                  onChange={(e) => setFormData({ ...formData, senderAddress: e.target.value })}
+                  placeholder="Almadies, Dakar"
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
                 />
               </div>
             </div>
@@ -422,8 +482,7 @@ export function DeliveryTab() {
                   value={formData.packageSize}
                   onChange={(e) => {
                     setFormData({ ...formData, packageSize: e.target.value })
-                    setRates(null)
-                  }}
+                    }}
                   className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
                 >
                   <option value="small">Petit</option>
@@ -440,8 +499,7 @@ export function DeliveryTab() {
                   value={formData.packageWeight}
                   onChange={(e) => {
                     setFormData({ ...formData, packageWeight: e.target.value })
-                    setRates(null)
-                  }}
+                    }}
                   className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
                 />
               </div>
@@ -459,36 +517,10 @@ export function DeliveryTab() {
               </div>
             </div>
 
-            {/* Calculate rate button */}
-            {formData.selectedZone && formData.packageWeight && (
-              <button
-                type="button"
-                onClick={calculateRate}
-                disabled={logisticsLoading}
-                className="w-full flex items-center justify-center gap-2 py-2 bg-kcb-ardoise hover:bg-white/[0.08] text-white rounded-[4px] text-sm transition"
-              >
-                <Calculator className="w-4 h-4" />
-                {logisticsLoading ? 'Calcul...' : 'Calculer la cotation'}
-              </button>
-            )}
-
-            {/* Rate display */}
-            {rates && (
-              <div className="bg-kcb-or/10 border border-kcb-or/30 rounded-[4px] p-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-kcb-pierre text-sm">Tarif estimé:</span>
-                  <span className="text-2xl font-bold text-kcb-or">
-                    {rates.price ? `${rates.price} XOF` : '—'}
-                  </span>
-                </div>
-                {rates.estimatedDays && (
-                  <p className="text-xs text-kcb-pierre mt-1">
-                    Délai estimé: {rates.estimatedDays}
-                  </p>
-                )}
-                {rates.mock && <p className="text-xs text-yellow-500 mt-1">* Tarif approximatif</p>}
-              </div>
-            )}
+            <p className="text-xs text-kcb-pierre bg-kcb-ardoise/60 rounded-[4px] p-3">
+              Le coût de l'expédition est calculé par Logidoo lors de la validation de votre demande
+              par l'équipe Kucibok ; vous serez notifié avec le montant et le numéro de suivi.
+            </p>
 
             {/* Submit button */}
             <button
