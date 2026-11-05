@@ -53,6 +53,11 @@ export function DeliveryTab() {
     deliveryPriority: 'standard',
     selectedZone: '',
     selectedPickupPoint: '',
+    originCountryCode: 'SN',
+    senderPhone: '',
+    senderAddress: '',
+    transportMode: 'AIR',
+    transportType: 'EXPRESS',
   })
 
   const [formError, setFormError] = useState('')
@@ -99,6 +104,16 @@ export function DeliveryTab() {
       return
     }
 
+    if (!formData.selectedZone) {
+      setFormError("Choisissez le pays de livraison")
+      return
+    }
+
+    if (!formData.senderPhone || !formData.senderAddress) {
+      setFormError("Votre téléphone et l'adresse de collecte sont obligatoires")
+      return
+    }
+
     if (!formData.recipientName || !formData.recipientPhone) {
       setFormError('Le nom et téléphone du destinataire sont obligatoires')
       return
@@ -125,6 +140,11 @@ export function DeliveryTab() {
         artwork_ids: formData.artworksIds,
         zone: COUNTRIES.find((c) => c.code === formData.selectedZone)?.name || formData.selectedZone,
         destination_country_code: formData.selectedZone,
+        origin_country_code: formData.originCountryCode,
+        sender_phone: formData.senderPhone,
+        sender_address: formData.senderAddress,
+        transportMode: formData.transportMode,
+        transportType: formData.transportType,
       }
 
       const result = await createExpedition(expeditionData)
@@ -145,6 +165,11 @@ export function DeliveryTab() {
           deliveryPriority: 'standard',
           selectedZone: '',
           selectedPickupPoint: '',
+          originCountryCode: 'SN',
+          senderPhone: '',
+          senderAddress: '',
+          transportMode: 'AIR',
+          transportType: 'EXPRESS',
         })
       }
     } catch (error) {
@@ -323,6 +348,70 @@ export function DeliveryTab() {
                   onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
                   placeholder="Adresse complète, Ville, Code Postal"
                   className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                />
+              </div>
+            </div>
+
+            {/* Départ, transport et expéditeur */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Pays de départ</label>
+                <select
+                  value={formData.originCountryCode}
+                  onChange={(e) => setFormData({ ...formData, originCountryCode: e.target.value })}
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                >
+                  {COUNTRIES.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Mode de transport</label>
+                <select
+                  value={formData.transportMode}
+                  onChange={(e) => setFormData({ ...formData, transportMode: e.target.value })}
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                >
+                  <option value="AIR">Aérien (recommandé)</option>
+                  <option value="SEA">Maritime</option>
+                  <option value="LAND">Routier</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Type d'envoi</label>
+                <select
+                  value={formData.transportType}
+                  onChange={(e) => setFormData({ ...formData, transportType: e.target.value })}
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                >
+                  <option value="EXPRESS">Express (recommandé)</option>
+                  <option value="FRET">Fret</option>
+                  <option value="GROUPAGE">Groupage</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Votre téléphone</label>
+                <input
+                  type="tel"
+                  value={formData.senderPhone}
+                  onChange={(e) => setFormData({ ...formData, senderPhone: e.target.value })}
+                  placeholder="+221 77 000 00 00"
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-kcb-pierre mb-1">Adresse de collecte</label>
+                <input
+                  type="text"
+                  value={formData.senderAddress}
+                  onChange={(e) => setFormData({ ...formData, senderAddress: e.target.value })}
+                  placeholder="Almadies, Dakar"
+                  className="w-full bg-kcb-ardoise text-white border border-white/[0.06] rounded-[4px] px-3 py-2 text-sm focus:ring-2 focus:ring-kcb-or"
                 />
               </div>
             </div>

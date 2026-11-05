@@ -128,6 +128,19 @@ describe('Validation admin → création chez Logidoo (simulée)', () => {
     expect((await create(artist.token, { transportMode: 'SEA', transportType: 'GROUPAGE', destinationCountryCode: 'JP' })).statusCode).toBe(201)
   })
 
+  it('le formulaire de cotation (POST /logistics/expeditions) fournit tout ce qu’exige Logidoo', async () => {
+    const created = await call({ method: 'POST', url: '/api/logistics/expeditions', token: artist.token, body: {
+      recipient: { name: 'Luc', phone: '+33600000000', address: '1 rue X, Paris' },
+      package: { weight: 2.5, size: 'small' }, zone: 'France', destination_country_code: 'fr',
+      origin_country_code: 'SN', sender_phone: '+221700000000', sender_address: 'Almadies, Dakar',
+    } })
+    expect(created.statusCode).toBe(201)
+    expect(db.tables.delivery_requests.at(-1)).toMatchObject({ destination_country_code: 'FR', origin_country_code: 'SN', transport_mode: 'AIR', transport_type: 'EXPRESS', sender_phone: '+221700000000' })
+    expect((await validate(created.body.expedition.id)).statusCode).toBe(200)
+    expect(logidoo.calls.find((c) => c.method === 'POST').body).toMatchObject({ totalWeight: 3, pickUpLocationCountryCode: 'SN', dropOffLocationCountryCode: 'FR' })
+    expect((await call({ method: 'POST', url: '/api/logistics/expeditions', token: artist.token, body: { recipient: { name: 'L', phone: '1' }, transportMode: 'ROCKET' } })).statusCode).toBe(400)
+  })
+
   it('seul un admin peut valider', async () => {
     expect((await validate(deliveryId, artist.token)).statusCode).toBe(403)
     expect((await call({ method: 'POST', url: `/api/logistics/expeditions/${deliveryId}/validate` })).statusCode).toBe(401)
