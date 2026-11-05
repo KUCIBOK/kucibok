@@ -19,6 +19,7 @@ import {
 import { useDelivery } from '../../store/DeliveryStore'
 import { useLogistics } from '../../hooks/useLogistics'
 import { CustomsSimulator } from './CustomsSimulator'
+import { ArtworkPicker } from './ArtworkPicker'
 import { listCountries } from '../../../api/_modules/countries.js'
 
 // Tous les pays du monde, disponibles immédiatement (aucun chargement réseau)
@@ -294,6 +295,12 @@ export function DeliveryTab() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Œuvres à expédier */}
+            <ArtworkPicker
+              value={formData.artworksIds}
+              onChange={(ids) => setFormData({ ...formData, artworksIds: ids })}
+            />
+
             {/* Zone de livraison */}
             <div>
               <label className="block text-xs text-kcb-pierre mb-1">Pays/Zone de livraison</label>

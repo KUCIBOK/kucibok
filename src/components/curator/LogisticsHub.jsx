@@ -1,3 +1,4 @@
+import { DeliveryTab } from '../delivery/DeliveryTab'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -12,13 +13,8 @@ import {
   Download,
   Calculator,
   MapPin,
-  Loader2,
-  Phone,
-  User,
-  Calendar,
   Lock,
 } from 'lucide-react'
-import { useLogistics } from '../../hooks/useLogistics'
 import { PlanGate } from '../shared/PlanGate'
 import { PLAN_STARTER } from '../../utils/planUtils'
 import { useT } from '../../i18n'
@@ -80,233 +76,6 @@ const DESTINATIONS = {
 }
 
 const ORIGINS = ['Sénégal', 'Ghana', "Côte d'Ivoire", 'Nigeria', 'Mali', 'Cameroun', 'Kenya', 'Afrique du Sud']
-
-function ShippingTab() {
-  const t = useT(curatorT).logisticsHub
-  const { getDeliveryZones, getPickupPoints, getShippingRates, createExpedition, loading } = useLogistics()
-  const [zones, setZones] = useState([])
-  const [pickupPoints, setPickupPoints] = useState([])
-  const [rates, setRates] = useState(null)
-  const [formSuccess, setFormSuccess] = useState('')
-  const [formError, setFormError] = useState('')
-  const [formLoading, setFormLoading] = useState(false)
-  const [form, setForm] = useState({
-    selectedZone: '',
-    selectedPickupPoint: '',
-    deliveryAddress: '',
-    recipientName: '',
-    recipientPhone: '',
-    collectDate: '',
-    deliveryDate: '',
-    packageSize: 'medium',
-    packageWeight: '5',
-    deliveryPriority: 'standard',
-  })
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const z = await getDeliveryZones()
-        if (z?.zones) setZones(z.zones)
-        const p = await getPickupPoints()
-        if (p?.pickupPoints) setPickupPoints(p.pickupPoints)
-      } catch { /* silent */ }
-    }
-    load()
-  }, [])
-
-  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setRates(null) }
-
-  const calculateRate = async () => {
-    if (!form.selectedZone || !form.packageWeight) return
-    try {
-      const data = await getShippingRates('Dakar', form.selectedZone, { weight: parseFloat(form.packageWeight), size: form.packageSize })
-      setRates(data)
-    } catch { setRates(null) }
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setFormError('')
-    setFormSuccess('')
-    if (!form.recipientName || !form.recipientPhone) { setFormError(t.errorRecipient); return }
-    if (!form.collectDate || !form.deliveryDate) { setFormError(t.errorDates); return }
-    setFormLoading(true)
-    try {
-      const result = await createExpedition({
-        recipient: { name: form.recipientName, phone: form.recipientPhone, address: form.deliveryAddress || form.selectedPickupPoint },
-        package: { weight: parseFloat(form.packageWeight), size: form.packageSize, description: "Transport d'œuvres d'art" },
-        serviceType: form.deliveryPriority.toUpperCase(),
-        collectionDate: form.collectDate,
-        deliveryDate: form.deliveryDate,
-        zone: form.selectedZone,
-      })
-      setFormSuccess(t.successShipment(result?.expedition?.trackingNumber))
-      setForm({ selectedZone: '', selectedPickupPoint: '', deliveryAddress: '', recipientName: '', recipientPhone: '', collectDate: '', deliveryDate: '', packageSize: 'medium', packageWeight: '5', deliveryPriority: 'standard' })
-      setRates(null)
-    } catch (err) {
-      setFormError(err.message || t.errorRecipient)
-    }
-    setFormLoading(false)
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 p-3 bg-[#9B4D96]/10 border border-[#9B4D96]/25 rounded-[4px] text-xs text-[#c084d8]">
-        <Truck className="w-4 h-4 flex-shrink-0" />
-        {t.logidooNotice}
-      </div>
-
-      <div className="bg-kcb-ardoise border border-white/[0.06] rounded-[4px] p-5">
-        <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-          <Package className="w-4 h-4 text-[#9B4D96]" /> {t.shippingFormTitle}
-        </h4>
-
-        {formError && (
-          <div className="mb-4 flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-[4px]">
-            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {formError}
-          </div>
-        )}
-        {formSuccess && (
-          <div className="mb-4 flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-[4px]">
-            <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" /> {formSuccess}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Zone */}
-          <div>
-            <label className="text-xs text-kcb-pierre block mb-1.5">{t.zoneLabel}</label>
-            <select value={form.selectedZone} onChange={(e) => set('selectedZone', e.target.value)} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm px-3 py-2.5 rounded-[4px] focus:outline-none focus:border-[#9B4D96]/50 appearance-none">
-              <option value="">{t.zoneDefault}</option>
-              {zones.length > 0
-                ? zones.map((z) => <option key={z.id} value={z.name}>{z.region ? `[${z.region}] ` : ''}{z.name}{z.price ? ` — ${z.price} XOF` : ''}</option>)
-                : ['France', 'Royaume-Uni', 'Belgique', 'Suisse', 'Allemagne', 'Italie', 'Espagne', 'USA', 'Canada'].map((c) => <option key={c} value={c}>{c}</option>)
-              }
-            </select>
-          </div>
-
-          {/* Point de retrait */}
-          {pickupPoints.length > 0 && (
-            <div>
-              <label className="text-xs text-kcb-pierre block mb-1.5">{t.pickupLabel}</label>
-              <select value={form.selectedPickupPoint} onChange={(e) => set('selectedPickupPoint', e.target.value)} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm px-3 py-2.5 rounded-[4px] focus:outline-none focus:border-[#9B4D96]/50 appearance-none">
-                <option value="">{t.pickupDefault}</option>
-                {pickupPoints.map((p) => <option key={p.id} value={p.address}>{p.name}</option>)}
-              </select>
-            </div>
-          )}
-
-          {/* Adresse */}
-          <div>
-            <label className="text-xs text-kcb-pierre block mb-1.5">{t.addressLabel}</label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-kcb-pierre" />
-              <input type="text" value={form.deliveryAddress} onChange={(e) => set('deliveryAddress', e.target.value)} placeholder={t.addressPlaceholder} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm pl-9 pr-3 py-2.5 rounded-[4px] focus:outline-none focus:border-[#9B4D96]/50 placeholder-kcb-pierre" />
-            </div>
-          </div>
-
-          {/* Destinataire */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-kcb-pierre block mb-1.5">{t.recipientNameLabel}</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-kcb-pierre" />
-                <input type="text" value={form.recipientName} onChange={(e) => set('recipientName', e.target.value)} placeholder={t.recipientNamePlaceholder} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm pl-9 pr-3 py-2.5 rounded-[4px] focus:outline-none focus:border-[#9B4D96]/50 placeholder-kcb-pierre" />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-kcb-pierre block mb-1.5">{t.phoneLabel}</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-kcb-pierre" />
-                <input type="tel" value={form.recipientPhone} onChange={(e) => set('recipientPhone', e.target.value)} placeholder={t.phonePlaceholder} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm pl-9 pr-3 py-2.5 rounded-[4px] focus:outline-none focus:border-[#9B4D96]/50 placeholder-kcb-pierre" />
-              </div>
-            </div>
-          </div>
-
-          {/* Dates */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-kcb-pierre block mb-1.5">{t.collectDateLabel}</label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-kcb-pierre" />
-                <input type="date" value={form.collectDate} onChange={(e) => set('collectDate', e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm pl-9 pr-3 py-2.5 rounded-[4px] focus:outline-none focus:border-[#9B4D96]/50" />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-kcb-pierre block mb-1.5">{t.deliveryDateLabel}</label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-kcb-pierre" />
-                <input type="date" value={form.deliveryDate} onChange={(e) => set('deliveryDate', e.target.value)} min={form.collectDate || new Date().toISOString().split('T')[0]} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm pl-9 pr-3 py-2.5 rounded-[4px] focus:outline-none focus:border-[#9B4D96]/50" />
-              </div>
-            </div>
-          </div>
-
-          {/* Package */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-kcb-pierre block mb-1.5">{t.sizeLabel}</label>
-              <select value={form.packageSize} onChange={(e) => set('packageSize', e.target.value)} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm px-3 py-2.5 rounded-[4px] focus:outline-none appearance-none">
-                <option value="small">{t.sizeSmall}</option>
-                <option value="medium">{t.sizeMedium}</option>
-                <option value="large">{t.sizeLarge}</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-kcb-pierre block mb-1.5">{t.weightLabel}</label>
-              <input type="number" min="0.1" step="0.1" value={form.packageWeight} onChange={(e) => set('packageWeight', e.target.value)} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm px-3 py-2.5 rounded-[4px] focus:outline-none focus:border-[#9B4D96]/50" />
-            </div>
-            <div>
-              <label className="text-xs text-kcb-pierre block mb-1.5">{t.priorityLabel}</label>
-              <select value={form.deliveryPriority} onChange={(e) => set('deliveryPriority', e.target.value)} className="w-full bg-kcb-noir border border-white/[0.08] text-white text-sm px-3 py-2.5 rounded-[4px] focus:outline-none appearance-none">
-                <option value="standard">{t.priorityStandard}</option>
-                <option value="priority">{t.priorityPriority}</option>
-                <option value="express">{t.priorityExpress}</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Calculate rate */}
-          {form.selectedZone && form.packageWeight && (
-            <button type="button" onClick={calculateRate} disabled={loading} className="w-full flex items-center justify-center gap-2 py-2 bg-kcb-noir/60 hover:bg-white/[0.06] text-kcb-sable text-sm rounded-[4px] border border-white/[0.06] transition">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
-              {loading ? t.calculating : t.calculateBtn}
-            </button>
-          )}
-
-          {rates && (
-            <div className="p-4 bg-kcb-or/5 border border-kcb-or/20 rounded-[4px] flex items-center justify-between">
-              <div>
-                <p className="text-sm text-kcb-sable">{t.estimatedRate}</p>
-                {rates.estimatedDays && <p className="text-xs text-kcb-pierre">{t.estimatedDelay(rates.estimatedDays)}</p>}
-                {rates.mock && <p className="text-xs text-amber-400">{t.approximateRate}</p>}
-              </div>
-              <span className="text-xl font-bold text-kcb-or">{rates.price ? `${rates.price} XOF` : '—'}</span>
-            </div>
-          )}
-
-          <button type="submit" disabled={formLoading} className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-[4px] transition disabled:opacity-40 text-white" style={{ background: '#9B4D96' }}>
-            {formLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />}
-            {formLoading ? t.creating : t.createShipment}
-          </button>
-        </form>
-      </div>
-
-      <div className="bg-kcb-ardoise border border-[#9B4D96]/20 rounded-[4px] p-4">
-        <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-          <Truck className="w-4 h-4 text-[#9B4D96]" /> {t.logidooTitle}
-        </h4>
-        <div className="space-y-1.5">
-          {t.logidooFeatures.map((f, i) => (
-            <p key={i} className="flex items-center gap-2 text-xs text-kcb-pierre">
-              <CheckCircle className="w-3 h-3 text-emerald-400 flex-shrink-0" />{f}
-            </p>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function PermitsTab() {
   const t = useT(curatorT).logisticsHub
@@ -567,7 +336,7 @@ export function LogisticsHub() {
 
       <AnimatePresence mode="wait">
         <motion.div key={activeTab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }}>
-          {activeTab === 'shipping' && <ShippingTab />}
+          {activeTab === 'shipping' && <DeliveryTab />}
           {activeTab === 'permits' && (
             <PlanGate
               minLevel={PLAN_STARTER}
