@@ -1,3 +1,4 @@
+import { trackLead } from '../lib/analytics'
 import { Helmet } from 'react-helmet'
 import { useState, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -33,6 +34,7 @@ const CONTACT_INFO = [
 /** Subject options for the contact form dropdown. */
 const SUBJECTS = [
   'Question generale',
+  'Demande de demo',
   'Support technique',
   "Vente ou achat d'oeuvre",
   "Certification d'une oeuvre",
@@ -104,6 +106,8 @@ export default function Contact() {
           body: JSON.stringify(form),
         })
         if (!res.ok) throw new Error('Erreur serveur')
+        // Mesure : seulement quand le serveur a accepté le message (pas dans le repli ci-dessous)
+        trackLead(form.subject === 'Demande de demo' ? 'demo' : 'contact')
         setSubmitted(true)
         setForm(INITIAL_FORM)
       } catch {

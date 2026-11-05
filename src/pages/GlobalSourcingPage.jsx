@@ -1,3 +1,4 @@
+import { trackLead } from '../lib/analytics'
 import { useState } from 'react'
 import { ArrowRight, CheckCircle, Loader2 } from 'lucide-react'
 import PortalLayout from '../components/landing/PortalLayout'
@@ -88,6 +89,7 @@ function SourcingContent() {
       setError(res.error)
       return
     }
+    trackLead('sourcing_quote')
     setSent(true)
   }
 
