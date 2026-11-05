@@ -7,6 +7,7 @@ import {
   createDelivery,
   updateDelivery,
   changeDeliveryStatus,
+  validateDelivery,
   deleteDelivery,
 } from '../api/useDelivery'
 
@@ -82,6 +83,18 @@ export function DeliveryContextProvider({ children }) {
     }
   }, [makeToast])
 
+  const validate = useCallback(async (id) => {
+    const validated = await validateDelivery(id)
+    if (validated?._id) {
+      setState((prev) => ({
+        ...prev,
+        deliveries: prev.deliveries?.map((d) => (d._id === id ? validated : d)),
+        myDeliveries: prev.myDeliveries?.map((d) => (d._id === id ? validated : d)),
+      }))
+    }
+    return validated
+  }, [])
+
   const changeStatus = useCallback(async (id, payload) => {
     try {
       const updatedDelivery = await changeDeliveryStatus(id, payload)
@@ -128,8 +141,9 @@ export function DeliveryContextProvider({ children }) {
     create,
     updateDelivery: updateDeliveryCtx,
     changeStatus,
+    validate,
     deleteDelivery: deleteDeliveryCtx,
-  }), [state, create, updateDeliveryCtx, changeStatus, deleteDeliveryCtx])
+  }), [state, create, updateDeliveryCtx, changeStatus, validate, deleteDeliveryCtx])
 
   return (
     <DeliveryContext.Provider value={value}>

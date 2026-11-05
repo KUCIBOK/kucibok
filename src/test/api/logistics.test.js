@@ -127,7 +127,8 @@ describe('/api/logistics', () => {
       expect((await call({ method: 'POST', url: '/api/logistics/expeditions', token: artist.token, body: expedition({ artwork_ids: ['w1'] }) })).statusCode).toBe(201)
       expect(db.tables.delivery_artwork_ids).toHaveLength(1)
       const buyer = db.addUser({ role: 'buyer' })
-      expect((await call({ method: 'POST', url: '/api/logistics/expeditions', token: buyer.token, body: expedition() })).statusCode).toBe(403)
+      // Le collectionneur peut lui aussi demander une expédition (décision produit)
+      expect((await call({ method: 'POST', url: '/api/logistics/expeditions', token: buyer.token, body: expedition() })).statusCode).toBe(201)
       expect((await call({ method: 'POST', url: '/api/logistics/expeditions', body: expedition() })).statusCode).toBe(401)
     })
 

@@ -8,6 +8,7 @@ import { respondJSON, respondError, checkAuth } from './_lib/response.js'
 import { requireAuth } from './_lib/auth.js'
 import { checkRateLimit, addRateLimitHeaders } from './_lib/rateLimit.js'
 import { handleProfessionalAnalytics } from './_modules/professional-analytics-fixed.js'
+import { validateAndCreateExpedition, syncLogidooStatuses, cancelAtLogidoo } from './_modules/logidoo-expedition.js'
 import { handleExtraRoutes, createNotifier } from './_modules/extra-routes.js'
 import { handleLogidooRoutes, createLogidooClient, logidooConfig, logidooErrorResponse, listPickupPoints } from './_modules/logidoo.js'
 import { normalizeArtworkInput, artworkDatabaseError } from './_modules/artwork-input.js'
@@ -4013,8 +4014,8 @@ export default async function handler(req, res) {
 
         // POST /api/logistics/expeditions — créer une expédition suivie
         if (req.method === 'POST' && s1 === 'expeditions' && !s2) {
-          if (!['artist', 'curator', 'advisor', 'admin'].includes(caller.role)) {
-            return res.status(403).json({ success: false, error: 'Only artists, curators, and advisors can create shipments' })
+          if (!['artist', 'curator', 'advisor', 'buyer', 'admin'].includes(caller.role)) {
+            return res.status(403).json({ success: false, error: 'Only artists, curators, advisors and collectors can create shipments' })
           }
           const result = await createExpedition(caller.user, req.body)
           if (result.error) return res.status(result.status).json({ success: false, error: result.error })
@@ -4029,15 +4030,53 @@ export default async function handler(req, res) {
           return res.status(200).json({ success: true, expeditions: (data || []).map(toDeliveryClient) })
         }
 
+        // POST /api/logistics/expeditions/:id/validate — l'admin valide : création chez Logidoo, coût et suivi enregistrés
+        if (req.method === 'POST' && s1 === 'expeditions' && s2 && path[3] === 'validate') {
+          if (adminOnly()) return
+          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s2)) return res.status(400).json({ success: false, error: 'Identifiant invalide' })
+          const cfg = logidooConfig()
+          if (!cfg.configured) {
+            const unavailable = logidooErrorResponse({ code: 'NOT_CONFIGURED' })
+            return res.status(unavailable.status).json({ success: false, error: unavailable.error })
+          }
+          const result = await validateAndCreateExpedition({
+            supabaseAdmin, notify, client: createLogidooClient(cfg), deliveryId: s2, adminId: caller.userId,
+          })
+          if (result.error) {
+            return res.status(result.status).json({ success: false, error: result.error, ...(result.missing ? { missing: result.missing } : {}) })
+          }
+          return res.status(200).json({ success: true, expedition: toDeliveryClient(result.data) })
+        }
+
+        // POST /api/logistics/sync-statuses — relève les statuts Logidoo des expéditions en cours (admin)
+        if (req.method === 'POST' && s1 === 'sync-statuses') {
+          if (adminOnly()) return
+          const cfg = logidooConfig()
+          if (!cfg.configured) {
+            const unavailable = logidooErrorResponse({ code: 'NOT_CONFIGURED' })
+            return res.status(unavailable.status).json({ success: false, error: unavailable.error })
+          }
+          const { status, error, ...summary } = await syncLogidooStatuses({ supabaseAdmin, notify, client: createLogidooClient(cfg, { timeoutMs: 3000 }) })
+          if (error) return res.status(status).json({ success: false, error })
+          return res.status(200).json({ success: true, ...summary })
+        }
+
         // DELETE /api/logistics/cancel/:tid — annulation par le propriétaire ou l'admin, tant que non livrée
         if (req.method === 'DELETE' && s1 === 'cancel' && s2) {
-          const { data: delivery } = await supabaseAdmin.from('delivery_requests').select('id, user_id, status').eq('tracking_id', String(s2).toUpperCase()).maybeSingle()
+          const { data: delivery } = await supabaseAdmin.from('delivery_requests').select('id, user_id, status, logidoo_expedition_id').eq('tracking_id', String(s2).toUpperCase()).maybeSingle()
           if (!delivery) return res.status(404).json({ success: false, error: 'Tracking number not found' })
           if (caller.role !== 'admin' && delivery.user_id !== caller.userId) {
             return res.status(403).json({ success: false, error: 'You can only cancel your own shipments' })
           }
           if (['delivered', 'cancelled'].includes(delivery.status)) {
             return res.status(409).json({ success: false, error: `Shipment already ${delivery.status}` })
+          }
+          // Déjà transmise à Logidoo : l'annulation doit d'abord réussir chez le transporteur
+          if (delivery.logidoo_expedition_id) {
+            const cfg = logidooConfig()
+            if (!cfg.configured) return res.status(503).json({ success: false, error: logidooErrorResponse({ code: 'NOT_CONFIGURED' }).error })
+            const cancelled = await cancelAtLogidoo({ client: createLogidooClient(cfg), delivery })
+            if (!cancelled.ok) return res.status(502).json({ success: false, error: `Annulation refusée par Logidoo : ${cancelled.error}` })
           }
           const { error } = await supabaseAdmin.from('delivery_requests').update({ status: 'cancelled' }).eq('id', delivery.id)
           if (error) return res.status(500).json({ success: false, error: error.message })

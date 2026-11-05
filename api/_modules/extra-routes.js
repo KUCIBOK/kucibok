@@ -11,6 +11,8 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { normalizeTransport } from './logidoo-expedition.js'
+import { isCountryCode } from './countries.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MIN_PASSWORD = 8
@@ -243,13 +245,19 @@ export async function handleExtraRoutes(ctx) {
   if (s0 === 'delivery') {
     if (method === 'POST' && !s1) {
       const auth = await authenticate(); if (!auth) return true
-      if (!['artist', 'curator', 'advisor', 'admin'].includes(auth.role)) {
-        return send(403, { error: 'Only artists, curators, and advisors can create delivery requests' })
+      if (!['artist', 'curator', 'advisor', 'buyer', 'admin'].includes(auth.role)) {
+        return send(403, { error: 'Only artists, curators, advisors and collectors can create delivery requests' })
       }
       const b = req.body || {}
       if (!b.recipientName || !b.recipientPhone || !b.deliveryAddress) {
         return send(400, { error: 'recipientName, recipientPhone and deliveryAddress are required' })
       }
+      const transport = normalizeTransport(b)
+      if (transport.error) return send(400, { error: transport.error })
+      const originCode = String(b.originCountryCode || '').toUpperCase()
+      const destinationCode = String(b.destinationCountryCode || '').toUpperCase()
+      if (originCode && !isCountryCode(originCode)) return send(400, { error: 'originCountryCode: code pays invalide' })
+      if (destinationCode && !isCountryCode(destinationCode)) return send(400, { error: 'destinationCountryCode: code pays invalide' })
       const result = await ctx.createExpedition(auth.user, {
         recipient: { name: b.recipientName, phone: b.recipientPhone, address: b.deliveryAddress },
         package: { weight: b.packageWeight, size: b.packageSize },
@@ -265,6 +273,21 @@ export async function handleExtraRoutes(ctx) {
       await supabaseAdmin.from('delivery_requests').update({
         corridor: b.corridor || 'AF_TO_FR',
         origin_country: b.originCountry || null,
+        origin_country_code: originCode || null,
+        destination_country: b.destinationCountry || null,
+        destination_country_code: destinationCode || null,
+        transport_mode: transport.mode,
+        transport_type: transport.type,
+        sender_name: auth.user?.name || null,
+        sender_email: auth.user?.email || null,
+        sender_phone: b.senderPhone || null,
+        sender_address: b.senderAddress || null,
+        recipient_email: b.recipientEmail || null,
+        goods_value: Number.isFinite(Number(b.goodsValue)) && b.goodsValue !== '' ? Number(b.goodsValue) : null,
+        pickup_node_id: b.pickupNodeId || null,
+        pickup_node_name: b.pickupNodeName || null,
+        dropoff_node_id: b.dropoffNodeId || null,
+        dropoff_node_name: b.dropoffNodeName || null,
         museum_wrap: !!checklist.museum_wrap,
         bubble_wrap: !!checklist.bubble_wrap,
         crate: !!checklist.crate,
