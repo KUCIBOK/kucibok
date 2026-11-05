@@ -142,11 +142,11 @@ export function useLogistics() {
   }
 
   // Get pickup points
-  const getPickupPoints = async () => {
+  const getPickupPoints = async (countryCode = 'SN') => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(`${API_BASE_URL}/pickup-points`, {
+      const response = await fetch(`${API_BASE_URL}/pickup-points?countryCode=${encodeURIComponent(countryCode)}`, {
         headers: utils.options.headers,
       })
       const data = await response.json()

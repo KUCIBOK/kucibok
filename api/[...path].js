@@ -262,7 +262,7 @@ export default async function handler(req, res) {
     }
     // Crée une expédition (demande de livraison suivie) ; œuvres facultatives mais contrôlées
     const createExpedition = async (user, payload) => {
-      const { recipient = {}, package: pkg = {}, serviceType, collectionDate, deliveryDate, specialInstructions, artwork_ids, zone } = payload || {}
+      const { recipient = {}, package: pkg = {}, serviceType, collectionDate, deliveryDate, specialInstructions, artwork_ids, zone, destination_country_code } = payload || {}
       if (!recipient.name || !recipient.phone) return { status: 400, error: 'recipient.name and recipient.phone are required' }
       const ids = [...new Set(Array.isArray(artwork_ids) ? artwork_ids : [])]
       if (ids.length) {
@@ -285,7 +285,9 @@ export default async function handler(req, res) {
           delivery_priority: String(serviceType || 'standard').toLowerCase(),
           collect_date: collectionDate || null,
           delivery_date: deliveryDate || null,
-          special_instructions: specialInstructions || zone || null,
+          special_instructions: specialInstructions || null,
+          destination_country: zone || null,
+          destination_country_code: /^[A-Za-z]{2}$/.test(destination_country_code || '') ? destination_country_code.toUpperCase() : null,
         })
         .select()
         .single()
